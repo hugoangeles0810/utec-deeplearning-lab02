@@ -4,66 +4,22 @@ Guía para agentes de IA (Claude Code, Codex) y para el equipo. Léela completa 
 
 ## 1. Contexto
 
-El objetivo del laboratorio es **implementar en Python + PyTorch el modelo CLAMF-Former** descrito en
-`docs/paper.pdf`, y entrenarlo/evaluarlo sobre **un dataset distinto al del paper**, que entrega el profesor.
+El objetivo del laboratorio es **implementar en Python + PyTorch el modelo CLAMF-Former** del paper
+[`docs/paper.pdf`](docs/paper.pdf) y entrenarlo/evaluarlo sobre **un dataset distinto al del paper**,
+que entrega el profesor.
 
-- Paper: *Enhancing runoff prediction with causal lag-aware attention and multi-scale fusion in transformer
-  models* — W. Yuan & H. Yan, Journal of Hydrology 664 (2026) 134369.
-- Tarea del paper: predecir caudal (runoff) de los **próximos 7 días** a partir de **96 días** de historia
-  de caudal + forzantes meteorológicos (CAMELS, 241 cuencas, 5 variables Daymet).
+- **Resumen del paper: [`docs/paper.md`](docs/paper.md).** Es la referencia técnica del proyecto: aportes
+  (CLAAM, MSFM, FreqMAE), ecuaciones, arquitectura, setup experimental (hiperparámetros, métricas),
+  resultados y todo lo que el paper **no especifica**. Léelo antes de implementar cualquier módulo.
 - **Estado del dataset: todavía no lo tenemos.** El pipeline de datos debe ser genérico (serie(s) temporal(es)
   multivariada(s): covariables + variable objetivo) y se adaptará cuando llegue. No asumas columnas, frecuencia
   ni número de cuencas/estaciones; déjalo parametrizado en la config.
 
-## 2. Resumen técnico del paper (referencia rápida)
-
-Arquitectura encoder–decoder Transformer con 3 aportes:
-
-### 2.1 CLAAM — Causal Lag-Aware Attention Mechanism (Sec. 2.2.2)
-- **CAM (causal attention)**: máscara causal (triangular) en la self-attention del **encoder y del decoder**
-  (en el Transformer clásico solo el decoder es causal).
-- **LAAM (lag-aware attention)**: reemplaza la cross-attention del decoder (query = caudal, key/value =
-  meteorología). Una red predice un desfase `τ_i ≥ 0` por posición y la máscara permite ver `j ≤ i + τ_i`.
-  - Agregación de contenido (Eq. 2): `K̃_i = (Σ_{j≤i} K_j) / (P_i + ε)`.
-  - `Z_i = Concat(Q_i, K̃_i)` (Eq. 3).
-  - `τ_i = Softplus(W2 · LayerNorm(ReLU(W1 Z_i + b1) + Z_i) + b2)` (Eq. 4, paréntesis ambiguos en el PDF).
-  - Máscara (Eq. 5): `Mask_ij = 1 si j ≤ i + τ_i, 0 si no`.
-
-### 2.2 MSFM — Multi-Scale Fusion Module (Sec. 2.2.3)
-Se aplica a la entrada del encoder (meteorología) **y** del decoder (caudal), antes del positional encoding.
-- 3 ramas: `Conv1D(d → d_fusion) + GELU + MaxPool(k)` con `k = 1` (diaria), `7` (semanal), `30` (mensual).
-- Alineación: `F̂_weekly = CrossAttn(F_daily, F_weekly, F_weekly)`, idem mensual.
-- Salida: `Linear(Concat[F_daily, F̂_weekly, F̂_monthly])`.
-
-### 2.3 FreqMAE (Sec. 2.2.4)
-`Loss = Σ_k |Ŷ_k − Y_k|`, donde `Y_k`, `Ŷ_k` son la DFT (`torch.fft`) de observado y predicho.
-
-### 2.4 Setup experimental del paper (defaults)
-| Parámetro | Valor |
-|---|---|
-| Longitud encoder / decoder | 103 / 103 (96 historia + 7 a predecir) |
-| Entrada decoder | 96 días de caudal conocido + 7 días rellenos con ceros |
-| Salida | 7 días |
-| `d_model` / `d_fusion` | 64 / 64 |
-| Capas encoder y decoder | 4 |
-| Heads | 4 |
-| `d_ff` (position-wise) | 256 |
-| Dropout | 0.1 |
-| Optimizador / LR | Adam / 1e-3 |
-| Pérdida | FreqMAE |
-| Epochs | 200 pre-entrenamiento + 50 fine-tuning |
-| Early stopping | 20 epochs sin mejora en validación |
-| Seed | 2025 |
-| Split (CAMELS) | train 1980-10-01→1995-09-30 · val 1995-10-01→2000-09-30 · test 2000-10-01→2010-09-30 |
-
-Métricas (Sec. 3.2): **NSE, KGE, RMSE, TPE-2 %, BIAS**, reportadas como **mediana y media** sobre
-cuencas/series. Fórmulas en Eqs. 16–20.
-
-## 3. Alcance del laboratorio
+## 2. Alcance del laboratorio
 
 Dentro del alcance:
 1. **Modelo completo CLAMF-Former** (CLAAM + MSFM + FreqMAE), entrenado y evaluado con las 5 métricas.
-2. **Ablaciones** (Tablas 5 y 6 del paper):
+2. **Ablaciones** (Tablas 5 y 6 del paper, ver `docs/paper.md` §8):
    - `CLAMF-1`: sin MSFM, sin CLAAM · `CLAMF-2`: con MSFM, sin CLAAM · `CLAMF-3`: sin MSFM, con CLAAM · `CLAMF`: completo.
    - `CLAAM-1`: sin CAM, sin LAAM · `CLAAM-2`: solo CAM · `CLAAM-3`: solo LAAM · `CLAAM`: ambos (todas sin MSFM).
 3. **Baseline: Transformer vanilla** (encoder–decoder estándar: self-attention del encoder no causal,
@@ -77,7 +33,7 @@ Diseña los módulos para que **cada componente se active/desactive por config**
 archivos YAML distintos, no código duplicado. Los módulos de atención deben poder **devolver los pesos de
 atención** (opcionalmente) para visualizarlos como en las Figs. 2 y 9.
 
-## 4. Estructura del repositorio (objetivo)
+## 3. Estructura del repositorio (objetivo)
 
 ```
 .
@@ -105,6 +61,7 @@ atención** (opcionalmente) para visualizarlos como en las Figs. 2 y 9.
 ├── reports/figures/               # figuras para presentación y video
 └── docs/
     ├── paper.pdf
+    ├── paper.md                   # resumen técnico del paper
     └── decisions.md               # registro de decisiones de implementación
 ```
 
@@ -115,7 +72,7 @@ Reglas:
   No definir modelos ni lógica de entrenamiento dentro de notebooks.
 - No versionar `data/`, `mlruns/`, `mlflow.db`, checkpoints ni outputs pesados (añadir a `.gitignore`).
 
-## 5. Entorno y comandos
+## 4. Entorno y comandos
 
 Gestor: **uv** con `pyproject.toml` (Python 3.11, como el paper).
 
@@ -140,14 +97,14 @@ uv run mlflow ui                                               # ver experimento
   y documentarlo; no escribir ramas de código específicas por dispositivo salvo que sea imprescindible.
 - Los tests deben correr en CPU y ser rápidos (modelos diminutos, pocos pasos).
 
-## 6. Configuración de experimentos
+## 5. Configuración de experimentos
 
 - YAML en `configs/`, cargado a **dataclasses tipadas** en `clamf/config.py` (secciones sugeridas:
   `data`, `model`, `train`, `logging`). Un experimento = un YAML que sobreescribe `base.yaml`.
-- `base.yaml` reproduce los defaults del paper (tabla 2.4). **Ningún hiperparámetro hardcodeado** en el código.
+- `base.yaml` reproduce los defaults del paper (`docs/paper.md` §7). **Ningún hiperparámetro hardcodeado** en el código.
 - Validar la config al cargarla (claves desconocidas → error).
 
-## 7. Tracking con MLflow
+## 6. Tracking con MLflow
 
 - Tracking local (`mlruns/` o `sqlite:///mlflow.db`), configurable por variable de entorno `MLFLOW_TRACKING_URI`.
 - Un *experiment* de MLflow por estudio (p. ej. `clamf-main`, `ablation-clamf`, `ablation-claam`, `baseline`);
@@ -157,7 +114,7 @@ uv run mlflow ui                                               # ver experimento
   predicciones de test (CSV/Parquet) y figuras.
 - Las tablas y figuras de resultados se generan **a partir de los runs de MLflow**, no copiando números a mano.
 
-## 8. Reglas de implementación
+## 7. Reglas de implementación
 
 ### Fidelidad al paper
 - El setup del paper es el **default**. Cualquier desviación (ventana, horizonte, hiperparámetros,
@@ -165,18 +122,14 @@ uv run mlflow ui                                               # ver experimento
 - Cita la sección/ecuación del paper en el docstring de cada módulo que la implemente (p. ej. `# Eq. (4)`).
 
 ### Ambigüedades del paper
-Política: **elegir la interpretación más razonable, implementarla y documentarla** en `docs/decisions.md`
-(qué dice el paper, qué se eligió, por qué, alternativas). Ambigüedades conocidas:
-- `P_i` en Eq. 2 (¿índice de posición `i+1` → media acumulada, o el positional encoding?).
-- Ubicación de la conexión residual y paréntesis en Eq. 4; si `τ` se predice por head o compartido.
-- FreqMAE: `fft` vs `rfft`, suma vs media, sobre qué tramo se aplica (los 7 días predichos o toda la
-  secuencia), valor de `N` (Eq. 14 permite `N ≥` longitud).
-- MSFM: padding/stride de Conv1D y MaxPool, y si la cross-attention de alineación es causal. Ojo: un Conv1D
-  con padding simétrico o un pooling que mira hacia adelante **filtra información futura** y contradice
-  la causalidad del CLAAM; preferir padding causal (izquierdo) salvo decisión documentada.
-- Cálculo de métricas con horizonte de 7 días (¿por día de anticipación, promedio del horizonte?).
-- Pre-entrenamiento + fine-tuning: el paper no detalla sobre qué datos se hace cada fase; depende de si el
-  dataset tiene múltiples series.
+El paper deja varios detalles sin especificar; están listados en `docs/paper.md` (apartados
+**"Lo que el paper no especifica"** y §10). Política: **elegir la interpretación más razonable,
+implementarla y documentarla** en `docs/decisions.md` (qué dice el paper, qué se eligió, por qué,
+alternativas).
+
+- **Causalidad del MSFM:** un Conv1D con padding simétrico o un pooling que mira hacia adelante **filtra
+  información futura** y contradice la causalidad del CLAAM; preferir padding causal (izquierdo) salvo
+  decisión documentada.
 
 **⚠️ Decisión PENDIENTE — máscara lag-aware (Eq. 5):** la máscara binaria `j ≤ i + τ_i` no es diferenciable,
 por lo que la red que predice `τ` no recibiría gradiente. El equipo **aún no ha decidido** la solución
@@ -202,7 +155,7 @@ Ver `docs/decisions.md`.
 - Las máscaras siguen la convención de PyTorch: se aplican como `-inf` (o sesgo aditivo) en los logits
   antes del softmax. Documentar si una máscara booleana significa "permitido" o "bloqueado".
 
-## 9. Tests (pytest)
+## 8. Tests (pytest)
 
 Obligatorios para las piezas críticas (`tests/`):
 - **Shapes** de cada módulo (atenciones, MSFM, modelo completo, baseline).
@@ -217,7 +170,7 @@ Obligatorios para las piezas críticas (`tests/`):
 
 Todo PR debe pasar `uv run pytest` y `uv run ruff check .`.
 
-## 10. Estilo de código
+## 9. Estilo de código
 
 - **Idioma**: código, identificadores, docstrings y comentarios en **inglés**; documentación del proyecto
   (`AGENTS.md`, `README`, `docs/`, presentación) en **español**.
@@ -226,7 +179,7 @@ Todo PR debe pasar `uv run pytest` y `uv run ruff check .`.
 - Módulos pequeños y enfocados; preferir composición (`nn.Module` reutilizables) a herencia profunda.
 - Sin código muerto ni experimentos comentados; lo exploratorio va en `notebooks/`.
 
-## 11. Flujo de trabajo en equipo (git)
+## 10. Flujo de trabajo en equipo (git)
 
 - Trabajo en equipo con **ramas + Pull Requests** hacia `main`; no hacer commits directos a `main`.
 - Ramas: `feat/<tema>`, `fix/<tema>`, `exp/<experimento>`, `docs/<tema>`.
@@ -236,7 +189,7 @@ Todo PR debe pasar `uv run pytest` y `uv run ruff check .`.
   añadidas a `docs/decisions.md`.
 - Los agentes no hacen push, merge ni force-push sin pedírselo explícitamente al equipo.
 
-## 12. Entregables
+## 11. Entregables
 
 - **Presentación** y **video** explicando el paper, la implementación, las adaptaciones al dataset y los
   resultados (CLAMF-Former vs Transformer vanilla + ablaciones).
@@ -244,9 +197,9 @@ Todo PR debe pasar `uv run pytest` y `uv run ruff check .`.
   tablas de métricas (mediana/media), boxplots por métrica, curvas de predicción vs observado,
   mapas de atención (causal vs vanilla, patrón diagonal del LAAM) y curvas de entrenamiento.
 
-## 13. Qué hacer ante dudas
+## 12. Qué hacer ante dudas
 
-1. Revisa el paper (`docs/paper.pdf`) y `docs/decisions.md`.
+1. Revisa `docs/paper.md` (y si hace falta `docs/paper.pdf`) y `docs/decisions.md`.
 2. Si es una ambigüedad menor de implementación: decide, implementa y documenta.
 3. Si afecta el alcance, el protocolo experimental, el dataset o una decisión marcada como **PENDIENTE**:
    detente y pregunta al equipo.
