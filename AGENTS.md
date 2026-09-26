@@ -127,6 +127,10 @@ El paper deja varios detalles sin especificar; están listados en `docs/paper.md
 implementarla y documentarla** en `docs/decisions.md` (qué dice el paper, qué se eligió, por qué,
 alternativas).
 
+`docs/decisions.md` mantiene la lista de pendientes ordenada por prioridad. Los agentes pueden cerrar los
+**P2 y P3** al implementar, documentando la decisión. Los **P0 y P1** los decide el equipo: los agentes
+pueden proponer opciones, pero no implementar una solución definitiva sin confirmación.
+
 - **Causalidad del MSFM:** un Conv1D con padding simétrico o un pooling que mira hacia adelante **filtra
   información futura** y contradice la causalidad del CLAAM; preferir padding causal (izquierdo) salvo
   decisión documentada.
