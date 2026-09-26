@@ -231,9 +231,9 @@ Con el CLAAM, las matrices de atención:
 
 ### 4.4 Lo que el paper no especifica
 
-- **⚠️ Diferenciabilidad de la máscara (decisión PENDIENTE, ver [`decisions.md`](decisions.md) D-001).**
-  Con una máscara binaria $j \le i + \tau_i$ la red que predice $\tau$ no recibe gradiente, así que no
-  aprendería. El paper no dice cómo lo resuelve (soft mask, straight-through u otra técnica).
+- **⚠️ Diferenciabilidad de la máscara.** Con una máscara binaria $j \le i + \tau_i$ la red que predice
+  $\tau$ no recibe gradiente, así que no aprendería. El paper no dice cómo lo resuelve. **Resuelto en
+  [`decisions.md`](decisions.md) D-001:** usamos una máscara suave diferenciable.
 - **Qué es $P_i$ en la Eq. 2.** Lo más plausible es $P_i = i + 1$ (número de elementos sumados), con lo que
   $\tilde{K}_i$ sería la **media acumulada** de las keys. El texto habla de "positional encodings", pero
   dividir un vector por un vector de encoding sinusoidal no tiene una interpretación clara.
@@ -244,7 +244,7 @@ Con el CLAAM, las matrices de atención:
 - **$\tau$ por head o compartido:** si cada head de la multi-head attention predice su propio $\tau_i$ o hay
   uno solo por posición.
 - **Unidades y redondeo de $\tau$:** se interpreta en pasos de tiempo (días), pero $\tau_i$ es continuo y el
-  paper no dice si se redondea.
+  paper no dice si se redondea. Con la máscara suave de D-001 no hace falta redondearlo.
 - **Qué $K$ se usa:** si la agregación usa las keys ya proyectadas por head ($d_k$) o la salida del encoder
   sin proyectar ($d_{model}$).
 

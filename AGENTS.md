@@ -135,11 +135,11 @@ pueden proponer opciones, pero no implementar una solución definitiva sin confi
   información futura** y contradice la causalidad del CLAAM; preferir padding causal (izquierdo) salvo
   decisión documentada.
 
-**⚠️ Decisión PENDIENTE — máscara lag-aware (Eq. 5):** la máscara binaria `j ≤ i + τ_i` no es diferenciable,
-por lo que la red que predice `τ` no recibiría gradiente. El equipo **aún no ha decidido** la solución
-(soft mask diferenciable, straight-through, u otra). Los agentes **no deben elegir una por su cuenta**:
-expongan la estrategia como un parámetro de la config/interfaz y pregunten al equipo antes de implementarla.
-Ver `docs/decisions.md`.
+**Máscara lag-aware (Eq. 5) — decidida en D-001:** se implementa como **máscara suave diferenciable**
+(sesgo `logsigmoid((i + τ_i + 0.5 − j) / T)` sobre los logits de la cross-attention), con temperatura
+`T` configurable, `τ` inicializado cerca de 0 y su distribución registrada en MLflow. Entrenamiento y
+evaluación usan la misma máscara suave; la binaria es solo para visualización. Detalles en
+`docs/decisions.md`.
 
 ### Datos y fugas de información
 - Split **cronológico** train/val/test; nunca aleatorio. Sin solapamiento temporal entre splits para la variable objetivo.
