@@ -12,19 +12,19 @@ cada ambigüedad está en [`paper.md`](paper.md).
 | **P2** | Arquitectura y pérdida: detalles del modelo central | El agente al implementar, documentándolo aquí |
 | **P3** | Defaults menores con un valor estándar razonable | El agente al implementar, documentándolo aquí |
 
-## Pendientes por prioridad
+## Decisiones por prioridad
 
 | ID | Prioridad | Tema | Depende de | Estado |
 |---|---|---|---|---|
 | [D-002](#d-002--dataset-del-profesor) | P0 | Dataset del profesor | — | PENDIENTE |
-| [D-001](#d-001--diferenciabilidad-de-la-máscara-lag-aware-eq-5) | P0 | Diferenciabilidad de la máscara lag-aware τ | — | PENDIENTE |
+| [D-001](#d-001--diferenciabilidad-de-la-máscara-lag-aware-eq-5) | P0 | Diferenciabilidad de la máscara lag-aware τ | — | **DECIDIDA** |
 | [D-003](#d-003--evaluación-del-horizonte-de-7-días) | P0 | Evaluación del horizonte de 7 días | — | PENDIENTE |
 | [D-004](#d-004--estrategia-de-pre-entrenamiento-y-fine-tuning) | P0 | Pre-entrenamiento y fine-tuning | D-002 | PENDIENTE |
 | [D-005](#d-005--causalidad-del-msfm) | P1 | Causalidad del MSFM | — | PENDIENTE |
 | [D-006](#d-006--covariables-conocidas-en-el-horizonte) | P1 | Covariables conocidas en el horizonte | D-002 | PENDIENTE |
 | [D-007](#d-007--normalización-y-valores-faltantes) | P1 | Normalización y valores faltantes | D-002 | PENDIENTE |
 | [D-008](#d-008--detalles-de-freqmae) | P2 | Detalles de FreqMAE | D-003 | PENDIENTE |
-| [D-009](#d-009--red-que-predice-τ) | P2 | Red que predice τ | D-001 | PENDIENTE |
+| [D-009](#d-009--red-que-predice-τ) | P2 | Red que predice τ | — | PENDIENTE |
 | [D-010](#d-010--estructura-del-msfm) | P2 | Estructura del MSFM | D-005 | PENDIENTE |
 | [D-011](#d-011--posiciones-de-salida-de-la-predicción) | P2 | Posiciones de salida de la predicción | — | PENDIENTE |
 | [D-012](#d-012--positional-encoding-batch-size-y-scheduler) | P3 | Positional encoding, batch size y scheduler | — | PENDIENTE |
@@ -60,18 +60,46 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Registrada: 2026-09-25.
 
 ## D-001 · Diferenciabilidad de la máscara lag-aware (Eq. 5)
-- Estado: **PENDIENTE**
+- Estado: **DECIDIDA**
 - Prioridad: P0
 - Paper: Sec. 2.2.2, Eq. (4)–(5). `τ_i = Softplus(MLP(Z_i))` y `Mask_ij = 1 si j ≤ i + τ_i, 0 si no`.
 - Problema: una máscara binaria no es diferenciable respecto a `τ`, así que la red que predice el lag
-  no recibiría gradiente y no aprendería.
+  no recibiría gradiente y no aprendería. Implementada literalmente, `τ` sería una función aleatoria de la
+  entrada fijada por la inicialización.
+- Decisión: **máscara suave diferenciable**, implementada como sesgo aditivo sobre los logits de la
+  cross-attention, antes del softmax:
+
+  $$
+  \text{bias}_{ij} = \log \sigma\!\left(\frac{i + \tau_i + \delta - j}{T}\right),
+  \qquad
+  \operatorname{Attn} = \operatorname{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}} + \text{bias}\right) V
+  $$
+
+  Detalles de implementación:
+  - Calcular el sesgo con `torch.nn.functional.logsigmoid` (numéricamente estable).
+  - **Margen `δ = 0.5`**: desplaza el borde medio paso para que los días `j ≤ i` nunca se penalicen, aunque
+    `τ_i = 0` (sin margen, el día actual recibiría `log(0.5) ≈ −0.69`).
+  - **Temperatura `T` en la config** (default `1.0`, en pasos de tiempo), con opción de reducirla durante el
+    entrenamiento (annealing) para acercarse a la máscara binaria del paper. Con `T → 0` se recupera la Eq. 5.
+  - **Inicialización de `τ` cercana a 0**: sesgo negativo en la última capa antes del Softplus, para que el
+    modelo arranque como atención causal y amplíe la ventana solo si le sirve.
+  - **Monitoreo de `τ`**: registrar en MLflow su distribución (media y percentiles). El paper no acota `τ`;
+    si crece hasta cubrir toda la secuencia, el LAAM termina siendo una cross-attention estándar. No es una
+    fuga (la meteorología de toda la ventana es una entrada conocida), pero se pierde el sesgo inductivo del
+    mecanismo y hay que tenerlo en cuenta al leer las ablaciones.
+  - **Entrenamiento y evaluación usan la misma máscara suave.** La máscara binaria (`j ≤ i + τ_i`) se usa
+    solo para inspección y visualización (p. ej. ventanas como en la Fig. 9), no para calcular métricas.
+- Justificación: es la única opción con la que `τ` recibe un gradiente bien definido; conserva la semántica
+  del paper como caso límite (`T → 0`); se implementa como un sesgo aditivo compatible con la atención
+  estándar de PyTorch.
 - Alternativas consideradas:
-  - Soft mask diferenciable: sesgo aditivo `log(sigmoid((i + τ_i − j) / T))` en los logits de atención.
-  - Máscara binaria en el forward con gradiente straight-through en el backward.
-  - Ambas configurables y comparadas como experimento adicional.
-- Impacto: sin esta decisión no se puede implementar el LAAM, del que dependen el modelo completo y las
-  ablaciones CLAMF-3, CLAAM-3 y CLAAM. No depende del dataset.
-- Decisión: por definir por el equipo.
+  - Máscara binaria literal: descartada, `τ` no aprende.
+  - Máscara binaria en el forward con gradiente straight-through: descartada como opción principal. Con la
+    máscara aplicada como `-inf` en los logits el gradiente no está definido, obliga a enmascarar después
+    del softmax y renormalizar, y el gradiente es sesgado e inestable. Queda como experimento opcional si
+    sobra tiempo.
+  - Ambas configurables: descartada por el coste de implementación frente a lo que aporta al laboratorio.
+- Fecha / autor: 2026-09-25 / equipo.
 
 ## D-003 · Evaluación del horizonte de 7 días
 - Estado: **PENDIENTE**
@@ -152,9 +180,9 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   - qué es `P_i` en la Eq. 2 (lo más plausible: `i + 1`, es decir, media acumulada);
   - ubicación de la conexión residual en la Eq. 4;
   - `τ` por head o compartido;
-  - qué `K` se agrega (proyectada por head o salida del encoder sin proyectar);
-  - si `τ` se redondea.
-- Depende de: D-001 (el redondeo de `τ` está ligado a cómo se aplica la máscara).
+  - qué `K` se agrega (proyectada por head o salida del encoder sin proyectar).
+- Resuelto por D-001: `τ` es continuo y no se redondea (se usa directamente en la máscara suave), y su
+  inicialización arranca cerca de 0.
 - Registrada: 2026-09-25.
 
 ## D-010 · Estructura del MSFM
