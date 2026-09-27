@@ -17,7 +17,6 @@ URL = "https://drive.usercontent.google.com/download?id={id}&export=download&con
 # File name -> Google Drive file id, smallest first.
 FILES = {
     "metadata.json": "1TNmzf7Uk4qkzOkuYf0BmhhknDapPwcQO",
-    "leer_datos.py": "1soTsUZcEXqpY0001AlPlNJFtmlFdmhS1",
     "test_targets.csv": "1PFpyBgKK-Vpt1dWl5X9bSCxteQ01j5Xg",
     "test.h5": "1h2A-0tNqBWVuxk-zwNWmOK6-gLwnbWuJ",
     "train.h5": "1Ou6LEqX0eflNhf0AA_qp-lXd0SPlm6GG",
