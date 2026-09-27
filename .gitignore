@@ -20,7 +20,7 @@ htmlcov/
 .ipynb_checkpoints/
 
 # Data (not versioned)
-data/
+/data/
 
 # Experiment tracking (MLflow)
 mlruns/
