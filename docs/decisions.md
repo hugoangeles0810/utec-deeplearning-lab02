@@ -16,7 +16,7 @@ cada ambigüedad está en [`paper.md`](paper.md).
 
 | ID | Prioridad | Tema | Depende de | Estado |
 |---|---|---|---|---|
-| [D-002](#d-002--dataset-del-profesor) | P0 | Dataset del profesor | — | PENDIENTE |
+| [D-002](#d-002--dataset-del-profesor) | P0 | Dataset del profesor | — | PENDIENTE (datos recibidos) |
 | [D-001](#d-001--diferenciabilidad-de-la-máscara-lag-aware-eq-5) | P0 | Diferenciabilidad de la máscara lag-aware τ | — | **DECIDIDA** |
 | [D-003](#d-003--evaluación-del-horizonte-de-7-días) | P0 | Evaluación del horizonte de 7 días | — | PENDIENTE |
 | [D-004](#d-004--estrategia-de-pre-entrenamiento-y-fine-tuning) | P0 | Pre-entrenamiento y fine-tuning | D-002 | PENDIENTE |
@@ -50,13 +50,28 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 ## P0 · Bloqueantes
 
 ## D-002 · Dataset del profesor
-- Estado: **PENDIENTE**
+- Estado: **PENDIENTE — datos recibidos**
 - Prioridad: P0
 - Paper: Sec. 3.1 y Tabla 1 (CAMELS, 241 cuencas, 5 forzantes Daymet, datos diarios).
-- Pregunta abierta: todavía no tenemos el dataset. Hay que conocer las variables, la frecuencia, cuántas
-  series hay, cuál es la variable objetivo y el periodo cubierto, y decidir si la ventana 96→7 y las escalas
-  7/30 del MSFM siguen teniendo sentido.
-- Impacto: bloquea todo el pipeline de datos y condiciona D-004, D-006 y D-007.
+- Datos recibidos (2026-09-26): folder de Drive "Rainfall-Runoff" del profesor. Se descarga a `data/raw/`
+  con `uv run python -m clamf.data.download`. Según `metadata.json`:
+  - Archivos: `train.h5` (5.1 GB; train + validación), `test.h5` (454 MB), `test_targets.csv`
+    (`Id,q_01..q_48`), `metadata.json` y `leer_datos.py` (lector del profesor, usa `h5py`).
+  - Frecuencia **horaria**. Muestras ya cortadas en ventanas: `X` con **336 h de historia**, `y` con
+    **48 h a predecir**. Ejes `(sample, time, channel)`, `float32`.
+  - 12 canales: 11 meteorológicos (`convective_fraction`, `longwave_radiation`, `potential_energy`,
+    `potential_evaporation`, `pressure`, `shortwave_radiation`, `specific_humidity`, `temperature`,
+    `total_precipitation`, `wind_u`, `wind_v`) y el target `specific_discharge` (canal 11, mm/h).
+  - `split` en `train.h5`: 0 = train (254 000 muestras), 1 = validación (18 142). Test: 27 983 muestras.
+  - `basin_id` anónimo y consistente entre splits.
+  - `y_aux` (meteorología de las 48 h futuras) está marcada como
+    `future_supervision_only_not_inference_inputs`: **no puede ser entrada del modelo**.
+  - Sin normalización ni imputación aplicadas.
+- Preguntas abiertas (las decide el equipo):
+  - cómo adaptar la ventana 96→7 diaria del paper y las escalas 7/30 del MSFM a 336→48 horario;
+  - si el split train/validación que viene dado es cronológico, y si se usa tal cual;
+  - el rol de `y_aux` (ver D-006) y la normalización por `basin_id` con posibles NaNs (ver D-007).
+- Impacto: condiciona D-004, D-006 y D-007.
 - Registrada: 2026-09-25.
 
 ## D-001 · Diferenciabilidad de la máscara lag-aware (Eq. 5)
@@ -142,6 +157,9 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Paper: Sec. 3.2. El encoder recibe la meteorología de los 103 días, incluidos los 7 días a predecir.
 - Pregunta abierta: ¿nuestro dataset tiene covariables disponibles para el horizonte de predicción
   (observadas o pronosticadas)? Si no las tiene, hay que redefinir la entrada del encoder.
+- Nota (2026-09-26): el dataset **no** permite usar la meteorología futura como entrada (`y_aux` es solo
+  para supervisión), así que la entrada del encoder del paper (103 días incluyendo el horizonte) tiene que
+  redefinirse.
 - Depende de: D-002.
 - Registrada: 2026-09-25.
 
@@ -152,6 +170,8 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Pregunta abierta: normalización por serie o global, si se aplica log-transform al target y cómo se
   tratan los valores faltantes o centinelas (p. ej. `-999`). En cualquier caso, las estadísticas se ajustan
   solo con train (`AGENTS.md` §7).
+- Nota (2026-09-26): los datos vienen sin normalizar ni imputar; hay que revisar NaNs en el EDA.
+  `basin_id` permite normalizar por cuenca.
 - Depende de: D-002.
 - Registrada: 2026-09-25.
 
