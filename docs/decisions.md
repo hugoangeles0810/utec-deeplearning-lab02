@@ -56,7 +56,11 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Datos recibidos (2026-09-26): folder de Drive "Rainfall-Runoff" del profesor. Se descarga a `data/raw/`
   con `uv run python -m clamf.data.download`. Según `metadata.json`:
   - Archivos: `train.h5` (5.1 GB; train + validación), `test.h5` (454 MB), `test_targets.csv`
-    (`Id,q_01..q_48`), `metadata.json` y `leer_datos.py` (lector del profesor, usa `h5py`).
+    (`Id,q_01..q_48`) y `metadata.json`. El folder trae además `leer_datos.py`, un lector de referencia
+    del profesor que no se descarga.
+  - Claves de los `.h5` (se leen con `h5py`): `train.h5` tiene `X` `(N, 336, 12)`, `y` `(N, 48)`,
+    `y_aux` `(N, 48, 11)`, `split` `(N,)` y `basin_id` `(N,)`; `test.h5` tiene solo `X` y `basin_id`.
+    El `Id` de cada muestra es su índice de fila (base 0) dentro del archivo.
   - Frecuencia **horaria**. Muestras ya cortadas en ventanas: `X` con **336 h de historia**, `y` con
     **48 h a predecir**. Ejes `(sample, time, channel)`, `float32`.
   - 12 canales: 11 meteorológicos (`convective_fraction`, `longwave_radiation`, `potential_energy`,
