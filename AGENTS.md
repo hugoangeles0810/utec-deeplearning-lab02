@@ -11,9 +11,10 @@ que entrega el profesor.
 - **Resumen del paper: [`docs/paper.md`](docs/paper.md).** Es la referencia técnica del proyecto: aportes
   (CLAAM, MSFM, FreqMAE), ecuaciones, arquitectura, setup experimental (hiperparámetros, métricas),
   resultados y todo lo que el paper **no especifica**. Léelo antes de implementar cualquier módulo.
-- **Estado del dataset: todavía no lo tenemos.** El pipeline de datos debe ser genérico (serie(s) temporal(es)
-  multivariada(s): covariables + variable objetivo) y se adaptará cuando llegue. No asumas columnas, frecuencia
-  ni número de cuencas/estaciones; déjalo parametrizado en la config.
+- **Dataset: recibido** (Rainfall-Runoff, horario, ventanas de 336 h → 48 h, 12 canales; ver D-002 en
+  [`docs/decisions.md`](docs/decisions.md)). Se descarga a `data/raw/` con
+  `uv run python -m clamf.data.download`. Su adaptación al modelo (ventana, escalas, entradas) sigue
+  pendiente; mientras tanto, deja frecuencia, longitudes y canales parametrizados en la config.
 
 ## 2. Alcance del laboratorio
 
@@ -78,6 +79,7 @@ Gestor: **uv** con `pyproject.toml` (Python 3.11, como el paper).
 
 ```bash
 uv sync                                                        # instalar dependencias
+uv run python -m clamf.data.download                           # dataset → data/raw/ (sin uv: python src/clamf/data/download.py)
 uv run pytest                                                  # tests
 uv run ruff check . && uv run ruff format .                    # lint + formato
 uv run python -m clamf.train --config configs/experiments/clamf.yaml
