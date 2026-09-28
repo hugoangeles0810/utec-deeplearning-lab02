@@ -20,9 +20,11 @@ cada ambigüedad está en [`paper.md`](paper.md).
 | [D-001](#d-001--diferenciabilidad-de-la-máscara-lag-aware-eq-5) | P0 | Diferenciabilidad de la máscara lag-aware τ | — | **DECIDIDA** |
 | [D-003](#d-003--evaluación-del-horizonte-de-7-días) | P0 | Evaluación del horizonte de 7 días | — | PENDIENTE |
 | [D-004](#d-004--estrategia-de-pre-entrenamiento-y-fine-tuning) | P0 | Pre-entrenamiento y fine-tuning | D-002 | PENDIENTE |
+| [D-013](#d-013--meteorología-futura-en-test) | P0 | Meteorología futura en test | D-006 | PENDIENTE (en espera del profesor, sin fecha límite) |
 | [D-005](#d-005--causalidad-del-msfm) | P1 | Causalidad del MSFM | — | PENDIENTE |
 | [D-006](#d-006--covariables-conocidas-en-el-horizonte) | P1 | Covariables conocidas en el horizonte | D-002 | PENDIENTE |
-| [D-007](#d-007--normalización-y-valores-faltantes) | P1 | Normalización y valores faltantes | D-002 | PENDIENTE |
+| [D-007](#d-007--normalización-y-valores-faltantes) | P1 | Normalización y valores faltantes | D-002 | **DECIDIDA** |
+| [D-014](#d-014--hora-de-inicio-de-las-ventanas-y-re-muestreo-de-train) | P1 | Hora de inicio de las ventanas y re-muestreo de train | — | **DECIDIDA** |
 | [D-008](#d-008--detalles-de-freqmae) | P2 | Detalles de FreqMAE | D-003 | PENDIENTE |
 | [D-009](#d-009--red-que-predice-τ) | P2 | Red que predice τ | — | PENDIENTE |
 | [D-010](#d-010--estructura-del-msfm) | P2 | Estructura del MSFM | D-005 | PENDIENTE |
@@ -75,6 +77,13 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   - cómo adaptar la ventana 96→7 diaria del paper y las escalas 7/30 del MSFM a 336→48 horario;
   - si el split train/validación que viene dado es cronológico, y si se usa tal cual;
   - el rol de `y_aux` (ver D-006) y la normalización por `basin_id` con posibles NaNs (ver D-007).
+- Hallazgos del análisis (2026-09-27):
+  - val y test no comparten horas con train ni entre sí; no se puede verificar que sean posteriores a
+    train (no hay fechas), solo que son disjuntos;
+  - las ventanas de train se solapan y permiten reconstruir ~11.5 años horarios por cuenca;
+  - varios canales meteorológicos son trihorarios interpolados; el caudal es horario.
+- Propuesta de adaptación (2026-09-27): mantener la resolución horaria (encoder y decoder de 384
+  pasos, salida en las 48 últimas posiciones) y escalas MSFM `k = 1, 24, 96`.
 - Impacto: condiciona D-004, D-006 y D-007.
 - Registrada: 2026-09-25.
 
@@ -127,6 +136,9 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   ventana y el paper no dice cómo se agregan.
 - Pregunta abierta: ¿se evalúa cada día de anticipación por separado (lead 1…7), solo el primer día, o el
   promedio del horizonte?
+- Propuesta (2026-09-27): el horizonte es de 48 h y las ventanas de test no se
+  solapan. Métrica principal por cuenca sobre todos los pares (ventana, hora de anticipación), con
+  mediana y media sobre las 508 cuencas; como secundaria, NSE y RMSE por hora de anticipación (1…48).
 - Impacto: define cómo se leen todas las tablas de resultados y la comparación con el baseline.
 - Registrada: 2026-09-25.
 
@@ -137,8 +149,40 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   conjunto).
 - Pregunta abierta: ¿con qué datos se hace cada fase (todas las series → cada serie o región)? ¿Se omite el
   fine-tuning si el dataset tiene una sola serie?
+- Propuesta (2026-09-27): un modelo global para las 508 cuencas, sin fine-tuning por
+  cuenca; epochs definidas por número de muestras y early stopping con val. Con 384 pasos, cada
+  muestra cuesta ~6× más que en el paper, así que 200 + 50 epochs sobre 254 000 ventanas no son viables.
 - Depende de: D-002.
 - Registrada: 2026-09-25.
+
+## D-013 · Meteorología futura en test
+- Estado: **PENDIENTE — en espera de respuesta del profesor**
+- Prioridad: P0
+- Paper: Sec. 3.2. El encoder recibe la meteorología de toda la ventana, incluido el horizonte.
+- Problema: el equipo decidió usar `y_aux` como entrada del encoder (D-006), pero `test.h5` solo trae
+  `X` y `basin_id`. Las ventanas de test no se solapan entre sí, así que esa meteorología tampoco se
+  puede reconstruir. Tal como está, el modelo no se puede evaluar en test.
+- Opciones:
+  - a. pedir al profesor el `y_aux` de test (recomendada como primer paso);
+  - b. entrenar con dropout de la meteorología futura y un canal indicador; evaluar test sin ella y val
+    con y sin ella (recomendada si no llega `y_aux` de test);
+  - c. evaluar el modelo con `y_aux` en val y sacar una validación nueva de tramos de train;
+  - d. no usar `y_aux` como entrada.
+- Plan del equipo (2026-09-27): **opción a**. Se pide al profesor el `y_aux` de test y las predicciones
+  en test quedan **en espera** hasta recibirlo. Mientras tanto:
+  - el desarrollo sigue con train/val, sin mirar `test_targets.csv`;
+  - val no se reporta como resultado final. Para early stopping se separan tramos completos de train
+    (grupos de ventanas que se solapan entre sí), así val se usa lo menos posible;
+  - el pipeline acepta `y_aux` de test como opcional, y la config incluye `use_future_meteo` y
+    `future_meteo_dropout`, así que pasar a la opción b es cambiar un YAML y no el código;
+  - solo corridas cortas de desarrollo. La grilla de ablaciones y el baseline se lanzan cuando haya
+    respuesta, porque la opción b obliga a re-entrenar todo.
+- Si el profesor entrega el `y_aux` de test, antes de usarlo se verifica:
+  - que tenga shape `(27983, 48, 11)` y esté alineado por `Id` con `test.h5`;
+  - que continúe a `X` sin salto, como pasa con `y_aux` en train/val.
+- Alternativa: si el profesor dice que no, se pasa a la **opción b**. **No hay fecha límite**: se
+  espera su respuesta (equipo, 2026-09-27).
+- Registrada: 2026-09-27.
 
 ---
 
@@ -164,11 +208,14 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Nota (2026-09-26): el dataset **no** permite usar la meteorología futura como entrada (`y_aux` es solo
   para supervisión), así que la entrada del encoder del paper (103 días incluyendo el horizonte) tiene que
   redefinirse.
+- Decisión del equipo (2026-09-27): **`y_aux` entra al encoder en train/val** (384 h: `X[..., :11]`
+  seguido de `y_aux`) para el LAAM del paper; es la única excepción a `metadata.json`. `y` se usa solo
+  como target. Queda pendiente qué hacer en test, donde falta `y_aux` (ver D-013).
 - Depende de: D-002.
 - Registrada: 2026-09-25.
 
 ## D-007 · Normalización y valores faltantes
-- Estado: **PENDIENTE**
+- Estado: **DECIDIDA**
 - Prioridad: P1
 - Paper: no especifica normalización ni tratamiento de faltantes.
 - Pregunta abierta: normalización por serie o global, si se aplica log-transform al target y cómo se
@@ -176,8 +223,41 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   solo con train (`AGENTS.md` §7).
 - Nota (2026-09-26): los datos vienen sin normalizar ni imputar; hay que revisar NaNs en el EDA.
   `basin_id` permite normalizar por cuenca.
+- Nota (2026-09-27): el EDA no encontró NaN, infinitos ni centinelas en ningún split.
+- Decisión (detalle en [`data_preparation.md`](data_preparation.md) §4):
+  - estadísticas ajustadas solo con train (`split == 0`);
+  - meteorología: z-score global por canal;
+  - caudal (entrada del decoder y target): z-score por cuenca, `(q − μ_b) / σ_b`, con un mínimo `ε`
+    en `σ_b`;
+  - los 48 ceros del horizonte del decoder van en espacio normalizado (equivalen a la media de la
+    cuenca);
+  - las predicciones se des-normalizan antes de las métricas; los scalers se guardan como artifact;
+  - faltantes: no hay; al cargar se valida que todo sea finito y, si no, se lanza un error.
+- Justificación: las escalas meteorológicas son muy distintas entre canales, y `pressure` codifica la
+  altitud, así que normalizarla por cuenca borraría esa información. El caudal medio cambia ~70×
+  entre cuencas; el z-score por cuenca iguala su peso en la pérdida, como el NSE por cuenca, y
+  conserva los ceros y la escala lineal.
+- Alternativas consideradas: `q / σ_b`; `log(q + ε)` con z-score global (queda como experimento
+  opcional); normalización global del caudal (descartada: aplasta las cuencas secas).
+- Fecha / autor: 2026-09-27 / equipo.
 - Depende de: D-002.
 - Registrada: 2026-09-25.
+
+## D-014 · Hora de inicio de las ventanas y re-muestreo de train
+- Estado: **DECIDIDA**
+- Prioridad: P1
+- Paper: no aplica (el paper usa datos diarios).
+- Problema: todas las ventanas de train de una cuenca empiezan a la misma hora del día; las de val y
+  test, a cualquier hora (se detecta con el ciclo diario de la radiación de onda corta). En train, la posición `t` equivale
+  a una hora del día fija, y en evaluación no: es un desfase de distribución.
+- Propuesta: reconstruir las series de train por cuenca a partir de las ventanas
+  solapadas (0 conflictos, ~11.5 años por cuenca) y muestrear ventanas con inicio aleatorio dentro de
+  cada tramo continuo. Solo se usan horas de train, que no comparten horas con val/test.
+- Decisión: **no se re-muestrea**. Se usan las ventanas de train dadas tal cual y se acepta el
+  desfase de hora de inicio.
+- Justificación: mantiene el pipeline simple y usa los datos tal como los entrega el profesor.
+- Alternativas consideradas: la propuesta de re-muestreo de arriba (descartada por el equipo).
+- Fecha / autor: 2026-09-27 / equipo.
 
 ---
 
@@ -220,6 +300,8 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   - número de heads y si hay residual/LayerNorm en la cross-attention de fusión;
   - dimensión de salida del Linear final;
   - entrada de una sola variable en el decoder (`d = 1`).
+- Nota (2026-09-27): con datos horarios (384 pasos), las escalas 7/30 días del paper se adaptan; la
+  propuesta es `k = 1, 24, 96` (ver D-002).
 - Depende de: D-005.
 - Registrada: 2026-09-25.
 
