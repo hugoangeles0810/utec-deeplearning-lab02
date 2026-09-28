@@ -42,7 +42,8 @@ Los datos vienen **limpios**: no hay NaN, infinitos ni centinelas en ningún spl
 - **Test está en espera** (D-013): falta el `y_aux` de test y se le pidió al profesor. No hay fecha
   límite: se espera su respuesta. Mientras tanto:
   - no se mira `test_targets.csv`;
-  - val no se reporta como resultado final;
+  - early stopping y selección de modelo se hacen con val, pero val no se reporta como resultado
+    final;
   - las ablaciones y el baseline no se lanzan hasta tener respuesta;
   - si el profesor dice que no, se pasa a entrenar con dropout de la meteorología futura (opción b).
 
@@ -55,7 +56,8 @@ Todas las estadísticas se calculan **solo con train** (`split == 0`).
 | Meteorología (11 canales) | z-score **global por canal** | Las escalas son muy distintas (`pressure` ~10⁵, `specific_humidity` ~10⁻²). Global porque `pressure` codifica la altitud de la cuenca y conviene conservarla |
 | Caudal (`dec_x` y `target`) | z-score **por cuenca**: `(q − μ_b) / σ_b` | El caudal medio cambia ~70× entre cuencas; así cada cuenca pesa parecido en la pérdida, como en el NSE por cuenca. Conserva los ceros (~3 %) y la escala lineal |
 
-- `σ_b` lleva un mínimo `ε` para no dividir por un valor cercano a cero en cuencas casi secas.
+- `σ_b` lleva un mínimo (`discharge_std_floor`, 0.001 mm/h) para no dividir por un valor cercano a
+  cero en cuencas casi secas (D-015).
 - Los 48 ceros del horizonte del decoder se ponen en espacio normalizado, así que equivalen a la media
   de la cuenca.
 - Las predicciones se **des-normalizan** antes de calcular las métricas, que se reportan en mm/h.
@@ -69,12 +71,30 @@ No hay, pero al cargar se verifica que todo sea finito y que claves, shapes y co
 
 ## 6. Pipeline
 
-1. **Carga y validación** de los `.h5` y `test_targets.csv` (§5).
-2. **Ajuste de los scalers** con train (§4).
-3. **Datasets** de train, val y test que devuelven los tensores de §2. El `y_aux` de test es opcional,
-   para cuando llegue.
-4. **DataLoader** sembrado (seed 2025).
-5. **Des-normalización** de las predicciones antes de las métricas.
+Código en `src/clamf/data/`, parámetros en la sección `data:` de la config (`configs/base.yaml`).
 
-Parámetros en la config (`data:`): `history_hours`, `horizon_hours`, `use_future_meteo`,
-`future_meteo_dropout` y la normalización elegida.
+1. **Preparación (una vez)**: `uv run python -m clamf.data.prepare --config configs/base.yaml`
+   (~1 min, ~5 GB). Hace esto:
+   - valida los `.h5` y `test_targets.csv` (§5, `io.py`);
+   - ajusta los scalers con train (§4, `scalers.py`);
+   - escribe en `data/processed/` los arrays ya normalizados por split, junto con `scalers.json` y
+     `manifest.json`;
+   - comprueba que val y test no compartan horas con train.
+
+   Si cambian los raw o la normalización, el cache queda obsoleto y hay que correrlo con `--force`
+   (D-015).
+2. **Datasets** (`dataset.py`): `RainfallRunoffDataset` abre el cache con memmap y devuelve los
+   tensores de §2, más `row_id`. Test solo está disponible si trae `y_aux`; si no, da
+   `MissingFutureMeteoError` (D-013).
+3. **DataLoaders**: `build_dataloaders(cfg)` arma train (con shuffle sembrado, seed 2025), val y, si
+   hay `y_aux`, test.
+4. **Des-normalización**: `load_scalers(...).denormalize_q(pred, basin_id)` antes de las métricas.
+
+| Clave (`data:`) | Default | Qué controla |
+|---|---|---|
+| `raw_dir`, `processed_dir` | `data/raw`, `data/processed` | Rutas de entrada y del cache |
+| `history_hours` | 336 | Últimas horas de historia que entran al modelo (≤ 336) |
+| `horizon_hours` | 48 | Horizonte de predicción (≤ 48) |
+| `normalization.meteo` / `.discharge` | `global_zscore` / `basin_zscore` | Esquema de §4 |
+| `normalization.discharge_std_floor` | 0.001 | Mínimo de `σ_b` en mm/h |
+| `batch_size`, `eval_batch_size`, `num_workers` | 256, 512, 0 | DataLoaders |

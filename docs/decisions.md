@@ -29,6 +29,7 @@ cada ambigüedad está en [`paper.md`](paper.md).
 | [D-009](#d-009--red-que-predice-τ) | P2 | Red que predice τ | — | PENDIENTE |
 | [D-010](#d-010--estructura-del-msfm) | P2 | Estructura del MSFM | D-005 | PENDIENTE |
 | [D-011](#d-011--posiciones-de-salida-de-la-predicción) | P2 | Posiciones de salida de la predicción | — | PENDIENTE |
+| [D-015](#d-015--detalles-de-los-scalers-y-del-cache-de-datos) | P2 | Detalles de los scalers y del cache de datos | D-007 | **DECIDIDA** |
 | [D-012](#d-012--positional-encoding-batch-size-y-scheduler) | P3 | Positional encoding, batch size y scheduler | — | PENDIENTE |
 
 Otros pendientes (no técnicos): registrar la **fecha de entrega** de la presentación y el video.
@@ -171,10 +172,12 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Plan del equipo (2026-09-27): **opción a**. Se pide al profesor el `y_aux` de test y las predicciones
   en test quedan **en espera** hasta recibirlo. Mientras tanto:
   - el desarrollo sigue con train/val, sin mirar `test_targets.csv`;
-  - val no se reporta como resultado final. Para early stopping se separan tramos completos de train
-    (grupos de ventanas que se solapan entre sí), así val se usa lo menos posible;
-  - el pipeline acepta `y_aux` de test como opcional, y la config incluye `use_future_meteo` y
-    `future_meteo_dropout`, así que pasar a la opción b es cambiar un YAML y no el código;
+  - early stopping y selección de modelo se hacen con **val** (`split == 1`), pero val no se reporta
+    como resultado final (equipo, 2026-09-28; reemplaza la idea de separar tramos de train, que
+    chocaba con D-014);
+  - el pipeline acepta `y_aux` de test como opcional: si `test.h5` lo trae, `clamf.data.prepare` lo
+    cachea y el split de test queda disponible; sin él, el Dataset de test lanza un error explícito.
+    La opción b **no se implementa** hasta que el profesor responda que no;
   - solo corridas cortas de desarrollo. La grilla de ablaciones y el baseline se lanzan cuando haya
     respuesta, porque la opción b obliga a re-entrenar todo.
 - Si el profesor entrega el `y_aux` de test, antes de usarlo se verifica:
@@ -311,6 +314,29 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Paper: Sec. 2.2.1 y 3.2. La salida es de 7 días, pero no dice qué posiciones del decoder se usan.
 - Pregunta abierta: lo natural son las 7 últimas posiciones del decoder, proyectadas a 1 dimensión.
 - Registrada: 2026-09-25.
+
+## D-015 · Detalles de los scalers y del cache de datos
+- Estado: **DECIDIDA**
+- Prioridad: P2
+- Paper: no especifica normalización (ver D-007).
+- Decisión:
+  - las estadísticas se calculan sobre la historia `X` de las ventanas de train (`split == 0`), sin
+    `y`/`y_aux`. Como las ventanas se solapan, una hora cuenta una vez por cada ventana que la
+    contiene; el efecto es un peso casi uniforme dentro de cada tramo y no vale la pena deduplicar;
+  - `discharge_std_floor = 0.001` mm/h. Con los datos reales, `σ_b` va de 0.0009 a 0.55 mm/h
+    (mediana 0.106), así que el mínimo solo toca a una cuenca y apenas;
+  - `clamf.data.prepare` escribe un cache `.npy` ya normalizado en `data/processed/` (~5 GB, ~1 min)
+    que los Datasets abren con memmap. `manifest.json` guarda tamaño y mtime de los archivos raw y
+    la normalización; si no coinciden con la config, el Dataset falla y pide re-generar con
+    `--force`;
+  - `prepare` también comprueba, con un hash de cada fila horaria, que val y test no compartan
+    horas con train (0 compartidas con los datos reales).
+- Justificación: normalizar una vez evita repetir el trabajo en cada run, y el memmap mantiene baja
+  la RAM en el Mac y en la máquina NVIDIA. Con 0 workers el DataLoader entrega ~320 batches/s de 256
+  ventanas en el Mac, así que la carga no es el cuello de botella.
+- Alternativas consideradas: cargar todo en RAM (~6 GB por proceso); leer el `.h5` por muestra
+  (lento con acceso aleatorio); guardar el cache sin normalizar y normalizar en `__getitem__`.
+- Fecha / autor: 2026-09-28 / agente.
 
 ---
 
