@@ -1,0 +1,16 @@
+# Defaults shared by every experiment. Experiments in configs/experiments/ override these keys.
+seed: 2025
+device: auto  # auto | cuda | mps | cpu
+
+data:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  history_hours: 336  # last hours of X fed to the model (<= 336)
+  horizon_hours: 48  # forecast horizon (<= 48)
+  normalization:  # D-007
+    meteo: global_zscore
+    discharge: basin_zscore
+    discharge_std_floor: 0.001  # mm/h, lower bound for the per-basin std
+  batch_size: 256
+  eval_batch_size: 512
+  num_workers: 0
