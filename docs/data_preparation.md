@@ -86,8 +86,13 @@ Código en `src/clamf/data/`, parámetros en la sección `data:` de la config (`
 2. **Datasets** (`dataset.py`): `RainfallRunoffDataset` abre el cache con memmap y devuelve los
    tensores de §2, más `row_id`. Test solo está disponible si trae `y_aux`; si no, da
    `MissingFutureMeteoError` (D-013).
-3. **DataLoaders**: `build_dataloaders(cfg)` arma train (con shuffle sembrado, seed 2025), val y, si
-   hay `y_aux`, test.
+3. **Loaders**: `build_dataloaders(cfg, device)` arma train (con shuffle sembrado, seed 2025), val y,
+   si hay `y_aux`, test.
+   - Con `preload_to_device: true` (default, D-004), cada split se carga **una vez** en el dispositivo
+     (~5 s y 4.7 GB para train y val) y `DeviceLoader` arma cada batch con un solo indexado.
+     Train se baraja con una permutación nueva por epoch, sacada de un generador con seed;
+     guardar su estado alcanza para reanudar con el mismo orden.
+   - Con `preload_to_device: false`, un `DataLoader` lee los memmaps y los batches quedan en CPU.
 4. **Des-normalización**: `load_scalers(...).denormalize_q(pred, basin_id)` antes de las métricas.
 
 | Clave (`data:`) | Default | Qué controla |
@@ -97,5 +102,6 @@ Código en `src/clamf/data/`, parámetros en la sección `data:` de la config (`
 | `horizon_hours` | 48 | Horizonte de predicción (≤ 48) |
 | `normalization.meteo` / `.discharge` | `global_zscore` / `basin_zscore` | Esquema de §4 |
 | `normalization.discharge_std_floor` | 0.001 | Mínimo de `σ_b` en mm/h |
-| `batch_size`, `eval_batch_size`, `num_workers` | 256, 512, 0 | DataLoaders |
-| `preload_to_device` | `true` | Cargar train en el dispositivo y armar los batches sin `DataLoader` (D-004; pendiente de implementar) |
+| `batch_size`, `eval_batch_size` | 256, 512 | Tamaño de batch de train y de val/test |
+| `num_workers` | 0 | Workers del `DataLoader` (solo sin precarga) |
+| `preload_to_device` | `true` | Cargar cada split en el dispositivo y armar los batches sin `DataLoader` (D-004) |
