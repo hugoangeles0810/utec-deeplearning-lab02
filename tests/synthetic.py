@@ -8,7 +8,7 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from clamf.config import Config, DataConfig
+from clamf.config import Config, DataConfig, ModelConfig
 
 HIST, HOR, N_CH, TARGET = 24, 6, 12, 11
 N_TRAIN, N_VAL, N_TEST, N_BASINS = 40, 12, 10, 4
@@ -96,4 +96,5 @@ def make_config(tmp_path: Path, **data: object) -> Config:
         "batch_size": 8,
         "eval_batch_size": 8,
     }
-    return Config(data=DataConfig(**(fields | data)))
+    # Scales that divide HIST + HOR = 30, since the paper-adapted 24/96 do not.
+    return Config(data=DataConfig(**(fields | data)), model=ModelConfig(msfm_scales=(1, 5, 15)))
