@@ -133,9 +133,9 @@ alternativas).
 **P2 y P3** al implementar, documentando la decisión. Los **P0 y P1** los decide el equipo: los agentes
 pueden proponer opciones, pero no implementar una solución definitiva sin confirmación.
 
-- **Causalidad del MSFM:** un Conv1D con padding simétrico o un pooling que mira hacia adelante **filtra
-  información futura** y contradice la causalidad del CLAAM; preferir padding causal (izquierdo) salvo
-  decisión documentada.
+- **Causalidad del MSFM — decidida en D-005:** el MSFM se implementa **literal y no causal** (Conv1D
+  con padding simétrico, MaxPool con stride = k, fusión sin máscara). Con `use_msfm: true` la posición
+  `i` ve información de `t > i` dentro de la entrada; el target no se filtra porque el horizonte va en ceros.
 
 **Máscara lag-aware (Eq. 5) — decidida en D-001:** se implementa como **máscara suave diferenciable**
 (sesgo `logsigmoid((i + τ_i + 0.5 − j) / T)` sobre los logits de la cross-attention), con temperatura
@@ -166,7 +166,8 @@ evaluación usan la misma máscara suave; la binaria es solo para visualización
 Obligatorios para las piezas críticas (`tests/`):
 - **Shapes** de cada módulo (atenciones, MSFM, modelo completo, baseline).
 - **Causalidad**: perturbar la entrada en `t > i` no cambia la salida del encoder/decoder en posiciones `≤ i`
-  cuando CAM está activo (y sí puede cambiarla en el baseline vanilla).
+  cuando CAM está activo (y sí puede cambiarla en el baseline vanilla). Con `use_msfm: false`, o sobre
+  los bloques posteriores al MSFM, ya que el MSFM no es causal (D-005).
 - **Sin fuga del target**: cambiar los valores reales de los 7 días futuros no altera la predicción.
 - **FreqMAE**: 0 para predicción perfecta, no negativa, gradiente finito; comparar con un cálculo manual pequeño.
 - **Métricas**: NSE = 1 y BIAS = 0 para predicción perfecta; NSE = 0 al predecir la media; casos simples
