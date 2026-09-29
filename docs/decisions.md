@@ -16,7 +16,7 @@ cada ambigüedad está en [`paper.md`](paper.md).
 
 | ID | Prioridad | Tema | Depende de | Estado |
 |---|---|---|---|---|
-| [D-002](#d-002--dataset-del-profesor) | P0 | Dataset del profesor | — | PENDIENTE (datos recibidos) |
+| [D-002](#d-002--dataset-del-profesor) | P0 | Dataset del profesor | — | **DECIDIDA** |
 | [D-001](#d-001--diferenciabilidad-de-la-máscara-lag-aware-eq-5) | P0 | Diferenciabilidad de la máscara lag-aware τ | — | **DECIDIDA** |
 | [D-003](#d-003--evaluación-del-horizonte-de-7-días) | P0 | Evaluación del horizonte de 7 días | — | PENDIENTE |
 | [D-004](#d-004--estrategia-de-pre-entrenamiento-y-fine-tuning) | P0 | Pre-entrenamiento y fine-tuning | D-002 | PENDIENTE |
@@ -28,7 +28,7 @@ cada ambigüedad está en [`paper.md`](paper.md).
 | [D-008](#d-008--detalles-de-freqmae) | P2 | Detalles de FreqMAE | D-003 | PENDIENTE |
 | [D-009](#d-009--red-que-predice-τ) | P2 | Red que predice τ | — | PENDIENTE |
 | [D-010](#d-010--estructura-del-msfm) | P2 | Estructura del MSFM | D-005 | PENDIENTE |
-| [D-011](#d-011--posiciones-de-salida-de-la-predicción) | P2 | Posiciones de salida de la predicción | — | PENDIENTE |
+| [D-011](#d-011--posiciones-de-salida-de-la-predicción) | P2 | Posiciones de salida de la predicción | D-002 | **DECIDIDA** |
 | [D-015](#d-015--detalles-de-los-scalers-y-del-cache-de-datos) | P2 | Detalles de los scalers y del cache de datos | D-007 | **DECIDIDA** |
 | [D-012](#d-012--positional-encoding-batch-size-y-scheduler) | P3 | Positional encoding, batch size y scheduler | — | PENDIENTE |
 
@@ -53,7 +53,7 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 ## P0 · Bloqueantes
 
 ## D-002 · Dataset del profesor
-- Estado: **PENDIENTE — datos recibidos**
+- Estado: **DECIDIDA**
 - Prioridad: P0
 - Paper: Sec. 3.1 y Tabla 1 (CAMELS, 241 cuencas, 5 forzantes Daymet, datos diarios).
 - Datos recibidos (2026-09-26): folder de Drive "Rainfall-Runoff" del profesor. Se descarga a `data/raw/`
@@ -83,8 +83,21 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
     train (no hay fechas), solo que son disjuntos;
   - las ventanas de train se solapan y permiten reconstruir ~11.5 años horarios por cuenca;
   - varios canales meteorológicos son trihorarios interpolados; el caudal es horario.
-- Propuesta de adaptación (2026-09-27): mantener la resolución horaria (encoder y decoder de 384
-  pasos, salida en las 48 últimas posiciones) y escalas MSFM `k = 1, 24, 96`.
+- Decisión (propuesta del 2026-09-27, aprobada por el equipo el 2026-09-28):
+  - se mantiene la resolución **horaria**; no se agrega a diario;
+  - encoder y decoder de **384 pasos** (336 h de historia + 48 h de horizonte), equivalente a los
+    103 días (96 + 7) del paper;
+  - la predicción son las **48 últimas posiciones** del decoder (D-011);
+  - escalas del MSFM **`k = 1, 24, 96`** (hora, día, 4 días) en lugar de `1, 7, 30` (día, semana, mes);
+  - el split viene dado y se usa tal cual: train (`split == 0`) para entrenar, val (`split == 1`) para
+    early stopping y selección de modelo (D-013); `y_aux` y la normalización se deciden en D-006 y D-007.
+- Justificación: agregar a diario dejaría solo 14 + 2 pasos por ventana y perdería la dinámica horaria
+  del caudal. Con 384 pasos, `k = 24` y `k = 96` dividen la longitud exacta (16 y 4 pasos gruesos),
+  así que el MaxPool con stride = k (D-005) no necesita padding. Un `k` mensual (720 h) no cabe en la
+  ventana; `k = 96` da la escala más gruesa que todavía deja varios pasos para la fusión.
+- Alternativas consideradas: agregar a resolución diaria y usar la ventana del paper; escalas
+  `k = 1, 24, 168` (semana, que no divide 384 y deja ~2 pasos gruesos).
+- Fecha / autor: 2026-09-28 / equipo.
 - Impacto: condiciona D-004, D-006 y D-007.
 - Registrada: 2026-09-25.
 
@@ -323,18 +336,22 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   - número de heads y si hay residual/LayerNorm en la cross-attention de fusión;
   - dimensión de salida del Linear final;
   - entrada de una sola variable en el decoder (`d = 1`).
-- Nota (2026-09-27): con datos horarios (384 pasos), las escalas 7/30 días del paper se adaptan; la
-  propuesta es `k = 1, 24, 96` (ver D-002).
+- Nota (2026-09-27): con datos horarios (384 pasos), las escalas 7/30 días del paper se adaptan a
+  `k = 1, 24, 96` (**decidido en D-002**, 2026-09-28).
 - Nota (2026-09-28): D-005 ya fija padding simétrico en el Conv1D, MaxPool con stride = k y fusión sin
   máscara. Con `T = 384` y `k = 24, 96` la longitud es divisible, así que el MaxPool no necesita padding.
 - Depende de: D-005.
 - Registrada: 2026-09-25.
 
 ## D-011 · Posiciones de salida de la predicción
-- Estado: **PENDIENTE**
+- Estado: **DECIDIDA**
 - Prioridad: P2
 - Paper: Sec. 2.2.1 y 3.2. La salida es de 7 días, pero no dice qué posiciones del decoder se usan.
 - Pregunta abierta: lo natural son las 7 últimas posiciones del decoder, proyectadas a 1 dimensión.
+- Decisión: las **48 últimas posiciones** del decoder (las del horizonte, que entran en ceros),
+  proyectadas a 1 dimensión con una capa lineal (decidido en D-002).
+- Fecha / autor: 2026-09-28 / equipo.
+- Depende de: D-002.
 - Registrada: 2026-09-25.
 
 ## D-015 · Detalles de los scalers y del cache de datos
