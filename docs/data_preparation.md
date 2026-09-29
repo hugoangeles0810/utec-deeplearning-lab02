@@ -98,3 +98,4 @@ Código en `src/clamf/data/`, parámetros en la sección `data:` de la config (`
 | `normalization.meteo` / `.discharge` | `global_zscore` / `basin_zscore` | Esquema de §4 |
 | `normalization.discharge_std_floor` | 0.001 | Mínimo de `σ_b` en mm/h |
 | `batch_size`, `eval_batch_size`, `num_workers` | 256, 512, 0 | DataLoaders |
+| `preload_to_device` | `true` | Cargar train en el dispositivo y armar los batches sin `DataLoader` (D-004; pendiente de implementar) |

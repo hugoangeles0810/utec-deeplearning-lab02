@@ -1,4 +1,5 @@
 # Defaults shared by every experiment. Experiments in configs/experiments/ override these keys.
+# Paper setup (docs/paper.md §7) adapted to the hourly dataset; deviations in docs/decisions.md.
 seed: 2025
 device: auto  # auto | cuda | mps | cpu
 
@@ -11,6 +12,39 @@ data:
     meteo: global_zscore
     discharge: basin_zscore
     discharge_std_floor: 0.001  # mm/h, lower bound for the per-basin std
-  batch_size: 256
+  batch_size: 256  # D-004
   eval_batch_size: 512
   num_workers: 0
+  preload_to_device: true  # D-004
+
+model:  # paper Table 2
+  use_msfm: true  # MSFM (D-005: literal, non-causal)
+  use_causal_encoder: true  # CAM
+  use_lag_aware_cross_attn: true  # LAAM
+  d_model: 64
+  d_fusion: 64
+  n_heads: 4
+  encoder_layers: 4
+  decoder_layers: 4
+  d_ff: 256
+  dropout: 0.1
+  msfm_scales: [1, 24, 96]  # hours (D-002); each must divide history + horizon
+  lag_temperature: 1.0  # D-001
+  lag_margin: 0.5  # D-001
+  fused_attention: true  # D-004
+
+train:  # paper Table 3, D-004
+  optimizer: adam
+  lr: 0.001
+  loss: freqmae  # freqmae | mse | mae
+  max_epochs: 200
+  early_stopping_patience: 20
+  amp: bf16  # bf16 | none; CUDA only
+
+eval:  # D-003, mm/h
+  min_obs_std: 0.001
+  min_obs_mean: 0.001
+  tpe_top_fraction: 0.02
+
+logging:
+  experiment: dev  # MLflow experiment; tracking URI from MLFLOW_TRACKING_URI

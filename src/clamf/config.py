@@ -5,6 +5,7 @@ invalid values raise :class:`ConfigError` at load time.
 """
 
 import dataclasses
+import itertools
 import typing
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,6 +45,7 @@ class DataConfig:
     batch_size: int = 256
     eval_batch_size: int = 512
     num_workers: int = 0
+    preload_to_device: bool = True  # D-004: keep the train cache on the device, no DataLoader
 
     def __post_init__(self) -> None:
         for name in ("history_hours", "horizon_hours", "batch_size", "eval_batch_size"):
@@ -54,12 +56,110 @@ class DataConfig:
 
 
 @dataclass(frozen=True)
+class ModelConfig:
+    """CLAMF-Former architecture (paper Table 2) and component flags for ablations/baseline.
+
+    ``use_causal_encoder`` is CAM and ``use_lag_aware_cross_attn`` is LAAM (Sec. 2.2.2);
+    ``use_msfm`` is the multi-scale fusion module (Sec. 2.2.3, D-005).
+    """
+
+    use_msfm: bool = True
+    use_causal_encoder: bool = True
+    use_lag_aware_cross_attn: bool = True
+    d_model: int = 64
+    d_fusion: int = 64
+    n_heads: int = 4
+    encoder_layers: int = 4
+    decoder_layers: int = 4
+    d_ff: int = 256
+    dropout: float = 0.1
+    msfm_scales: tuple[int, ...] = (1, 24, 96)  # hours; D-002
+    lag_temperature: float = 1.0  # T of the soft lag-aware mask; D-001
+    lag_margin: float = 0.5  # delta of the soft lag-aware mask; D-001
+    fused_attention: bool = True  # scaled_dot_product_attention unless weights are requested; D-004
+
+    def __post_init__(self) -> None:
+        for name in ("d_model", "d_fusion", "n_heads", "encoder_layers", "decoder_layers", "d_ff"):
+            if getattr(self, name) <= 0:
+                raise ConfigError(f"model.{name} must be > 0")
+        if self.d_model % self.n_heads:
+            raise ConfigError("model.d_model must be divisible by model.n_heads")
+        if not 0 <= self.dropout < 1:
+            raise ConfigError("model.dropout must be in [0, 1)")
+        scales = self.msfm_scales
+        if not scales or scales[0] != 1 or any(b <= a for a, b in itertools.pairwise(scales)):
+            raise ConfigError("model.msfm_scales must start at 1 and be strictly increasing")
+        if self.lag_temperature <= 0:
+            raise ConfigError("model.lag_temperature must be > 0")
+        if self.lag_margin < 0:
+            raise ConfigError("model.lag_margin must be >= 0")
+
+
+@dataclass(frozen=True)
+class TrainConfig:
+    """Optimization budget (paper Table 3, D-004)."""
+
+    optimizer: Literal["adam"] = "adam"
+    lr: float = 1e-3
+    loss: Literal["freqmae", "mse", "mae"] = "freqmae"
+    max_epochs: int = 200
+    early_stopping_patience: int = 20  # epochs without val-loss improvement
+    amp: Literal["bf16", "none"] = "bf16"  # CUDA only; ignored on MPS/CPU (D-004)
+
+    def __post_init__(self) -> None:
+        if self.lr <= 0:
+            raise ConfigError("train.lr must be > 0")
+        for name in ("max_epochs", "early_stopping_patience"):
+            if getattr(self, name) <= 0:
+                raise ConfigError(f"train.{name} must be > 0")
+
+
+@dataclass(frozen=True)
+class EvalConfig:
+    """Metric settings (D-003); thresholds are in original units (mm/h)."""
+
+    min_obs_std: float = 1e-3  # below it, NSE and KGE are NaN for that basin
+    min_obs_mean: float = 1e-3  # below it, BIAS, TPE and KGE are NaN for that basin
+    tpe_top_fraction: float = 0.02  # TPE-2 %: share of highest observed hours
+
+    def __post_init__(self) -> None:
+        for name in ("min_obs_std", "min_obs_mean"):
+            if getattr(self, name) < 0:
+                raise ConfigError(f"eval.{name} must be >= 0")
+        if not 0 < self.tpe_top_fraction <= 1:
+            raise ConfigError("eval.tpe_top_fraction must be in (0, 1]")
+
+
+@dataclass(frozen=True)
+class LoggingConfig:
+    """MLflow settings; the tracking URI comes from ``MLFLOW_TRACKING_URI``."""
+
+    experiment: str = "dev"
+
+    def __post_init__(self) -> None:
+        if not self.experiment:
+            raise ConfigError("logging.experiment must not be empty")
+
+
+@dataclass(frozen=True)
 class Config:
     """Root configuration."""
 
     seed: int = 2025
     device: Literal["auto", "cuda", "mps", "cpu"] = "auto"
     data: DataConfig = field(default_factory=DataConfig)
+    model: ModelConfig = field(default_factory=ModelConfig)
+    train: TrainConfig = field(default_factory=TrainConfig)
+    eval: EvalConfig = field(default_factory=EvalConfig)
+    logging: LoggingConfig = field(default_factory=LoggingConfig)
+
+    def __post_init__(self) -> None:
+        # MaxPool with stride = k and no padding (D-002, D-005) needs k to divide the sequence.
+        seq_len = self.data.history_hours + self.data.horizon_hours
+        if self.model.use_msfm and any(seq_len % k for k in self.model.msfm_scales):
+            raise ConfigError(
+                f"every model.msfm_scales value must divide history + horizon = {seq_len}"
+            )
 
 
 def load_config(path: str | Path, base: str | Path | None = DEFAULT_BASE) -> Config:
@@ -116,6 +216,11 @@ def _coerce(hint: Any, value: Any, name: str) -> Any:
         if value not in allowed:
             raise ConfigError(f"{name}: {value!r} not in {list(allowed)}")
         return value
+    if origin is tuple:
+        (item, _) = typing.get_args(hint)
+        if not isinstance(value, list):
+            raise ConfigError(f"{name}: expected a list, got {type(value).__name__}")
+        return tuple(_coerce(item, v, f"{name}[{i}]") for i, v in enumerate(value))
     if hint is float and isinstance(value, int) and not isinstance(value, bool):
         return float(value)
     if not isinstance(value, hint) or (hint is int and isinstance(value, bool)):
