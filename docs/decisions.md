@@ -19,7 +19,7 @@ cada ambigüedad está en [`paper.md`](paper.md).
 | [D-002](#d-002--dataset-del-profesor) | P0 | Dataset del profesor | — | **DECIDIDA** |
 | [D-001](#d-001--diferenciabilidad-de-la-máscara-lag-aware-eq-5) | P0 | Diferenciabilidad de la máscara lag-aware τ | — | **DECIDIDA** |
 | [D-003](#d-003--evaluación-del-horizonte-de-predicción) | P0 | Evaluación del horizonte de predicción | — | **DECIDIDA** |
-| [D-004](#d-004--estrategia-de-pre-entrenamiento-y-fine-tuning) | P0 | Pre-entrenamiento y fine-tuning | D-002 | PENDIENTE |
+| [D-004](#d-004--estrategia-de-pre-entrenamiento-y-fine-tuning) | P0 | Pre-entrenamiento y fine-tuning | D-002 | **DECIDIDA** |
 | [D-013](#d-013--meteorología-futura-en-test) | P0 | Meteorología futura en test | D-006 | PENDIENTE (en espera del profesor, sin fecha límite) |
 | [D-005](#d-005--causalidad-del-msfm) | P1 | Causalidad del MSFM | — | **DECIDIDA** |
 | [D-006](#d-006--covariables-conocidas-en-el-horizonte) | P1 | Covariables conocidas en el horizonte | D-002 | PENDIENTE |
@@ -200,15 +200,74 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Registrada: 2026-09-25.
 
 ## D-004 · Estrategia de pre-entrenamiento y fine-tuning
-- Estado: **PENDIENTE**
+- Estado: **DECIDIDA**
 - Prioridad: P0
 - Paper: Sec. 3.2 y Tabla 3 (200 epochs de pre-entrenamiento + 50 de fine-tuning; modelos por región y
-  conjunto).
+  conjunto; early stopping de 20 epochs sin mejora en validación).
 - Pregunta abierta: ¿con qué datos se hace cada fase (todas las series → cada serie o región)? ¿Se omite el
   fine-tuning si el dataset tiene una sola serie?
-- Propuesta (2026-09-27): un modelo global para las 508 cuencas, sin fine-tuning por
-  cuenca; epochs definidas por número de muestras y early stopping con val. Con 384 pasos, cada
-  muestra cuesta ~6× más que en el paper, así que 200 + 50 epochs sobre 254 000 ventanas no son viables.
+- Decisión:
+  - **un modelo global** entrenado con las 508 cuencas, **sin fine-tuning** (ni por cuenca ni por grupo);
+  - tope de **200 epochs** (`train.max_epochs`), con **early stopping de paciencia 20** sobre la pérdida
+    de val (`train.early_stopping_patience`), como el paper; se evalúa val al final de cada epoch y se
+    guarda el mejor checkpoint;
+  - un epoch recorre las 254 000 ventanas de train tal como vienen (D-014);
+  - el **mismo presupuesto** (tope, paciencia, batch, seed) para CLAMF, las ablaciones y el baseline;
+  - infraestructura: la grilla final se entrena en **RunPod, Community Cloud, 1 × RTX 4090**
+    (~$0.34/h); la MacBook (M5 Pro, MPS) queda para desarrollo, tests y corridas cortas.
+- Mediciones (2026-09-28): proxy con los tamaños del paper (`d_model = 64`, 4 + 4 capas, 4 heads,
+  `d_ff = 256`, ~600 k parámetros), 384 pasos, MSFM `k = 1, 24, 96`, máscara lag-aware suave y
+  FreqMAE. No es el modelo real; el tiempo final puede variar ±50 %.
+
+  | Dispositivo | Batch | bf16 | Atención fusionada (SDPA) | Tiempo por epoch | Memoria |
+  |---|---|---|---|---|---|
+  | M5 Pro (MPS) | 128–512 | no | no / sí | ~17 min | — |
+  | RTX 4090 | 256 | no | no | 4.9 min | 14.5 GB |
+  | RTX 4090 | 512 | no | no | sin memoria | > 23 GB |
+  | RTX 4090 | 256 | no | sí | 2.2 min | 6.2 GB |
+  | RTX 4090 | 256 | sí | no | 4.2 min | 16.8 GB |
+  | **RTX 4090** | **256** | **sí** | **sí** | **0.9 min** | **4.2 GB** |
+  | RTX 4090 | 512–1024 | sí | sí | 1.0 min | 8.4–16.7 GB |
+
+  Con 0.9 min por epoch, una corrida que llega al tope cuesta ~3 h; las ~7 corridas de la grilla
+  (CLAMF, ablaciones y baseline) suman como máximo ~21 h, unos **$7**, y menos con early stopping.
+  En la MacBook la misma grilla tomaría ~2.5 semanas.
+- **Ajustes obligatorios en el código** (sin ellos el 4090 es solo ~3.5× más rápido que la MacBook y el
+  presupuesto no alcanza):
+  1. **Atención fusionada.** Las atenciones (CAM, LAAM, fusión del MSFM y baseline) usan
+     `torch.nn.functional.scaled_dot_product_attention`: `is_causal=True` para la máscara causal y
+     `attn_mask` como sesgo aditivo float para la máscara lag-aware suave (D-001). El cálculo explícito
+     (`softmax(QKᵀ/√d + sesgo)`) se usa **solo cuando se piden los pesos de atención** (figuras). Flag
+     `model.fused_attention` (default `true`). Test: ambos caminos dan la misma salida (tolerancia
+     float32).
+  2. **Precisión mixta bf16 en CUDA.** Forward con `torch.autocast("cuda", dtype=torch.bfloat16)`.
+     La FFT de FreqMAE, la pérdida y las métricas se calculan en **float32** (convertir antes de la
+     FFT). Sin `GradScaler` (bf16 no lo necesita). Flag `train.amp: bf16 | none` (default `bf16`; en
+     MPS y CPU se ignora y se registra en MLflow que no se usó).
+  3. **Datos precargados en el dispositivo.** A 0.9 min por epoch se leen ~4.6 GB por epoch y un
+     `DataLoader` con `num_workers: 0` sería el cuello de botella. El cache de train (4.4 GB) cabe en
+     los 24 GB del 4090 junto al modelo: se carga una vez como tensores en el dispositivo y los batches
+     se arman con índices barajados por el generador con seed. Flag `data.preload_to_device`
+     (default `true`).
+  4. **Batch de 256** (`data.batch_size`, ya en `base.yaml`). Con fp32 y batch 512 no cabe en 24 GB.
+  5. **Checkpoints reanudables.** Guardar modelo, optimizador, epoch, mejor pérdida de val, contador
+     de paciencia y estado del RNG al final de cada epoch, y poder reanudar desde ahí (el pod se puede
+     caer o hay que apagarlo).
+  6. **Registro en MLflow:** GPU y `amp` usados, tiempo por epoch, epoch del mejor checkpoint y
+     epochs corridos.
+- Justificación:
+  - el paper entrena por región y ajusta, pero aquí las 508 cuencas comparten un solo split y no hay
+    regiones: un modelo global aprovecha todas las ventanas y es el setup habitual para muchas
+    cuencas;
+  - el fine-tuning por cuenca no es caro en cómputo (~45 min por modelo en el 4090), pero habría que
+    hacerlo en cada ablación y en el baseline para compararlos con justicia, deja 508 checkpoints por
+    modelo y cada cuenca solo tiene ~500 ventanas de train, con riesgo de sobreajuste;
+  - con los ajustes de arriba, el tope de 200 epochs y la paciencia del paper entran de sobra en el
+    presupuesto de ~$20.
+- Alternativas consideradas: presupuesto completo del paper (200 + 50) con fine-tuning global o por
+  cuenca; tope de 40 epochs con paciencia 5–8 (~$1.5 en total, pero más lejos del paper); entrenar solo
+  en la MacBook (inviable para la grilla).
+- Fecha / autor: 2026-09-28 / equipo.
 - Depende de: D-002.
 - Registrada: 2026-09-25.
 
