@@ -568,7 +568,8 @@ Además de los huecos de cada aporte (§4.4, §5 y §6), el paper no detalla:
 - **Datos de pre-entrenamiento y de fine-tuning:** no dice si se pre-entrena con todas las cuencas y se
   ajusta por cuenca o por región. Para nuestro dataset dependerá de cuántas series tenga.
 - **Métricas con horizonte de 7 días:** no aclara si se evalúa cada día de anticipación por separado, solo
-  el primero o el promedio del horizonte.
+  el primero o el promedio del horizonte. Tampoco cómo trata métricas indefinidas (varianza o caudal
+  observado ≈ 0). **Decidido en D-003.**
 - **Normalización de los datos** (por cuenca, global, log-transform del caudal, etc.) ni **manejo de
   valores faltantes**.
 - **Tipo de positional encoding** (sinusoidal o aprendido).
