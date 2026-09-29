@@ -316,8 +316,8 @@ la dimensión del modelo. En el paper, $d_{\text{fusion}} = d_{\text{model}} = 6
 - **⚠️ Causalidad del MSFM.** Un Conv1D con padding simétrico, un MaxPool de ventana 7 o 30 o una
   cross-attention sin máscara hacen que el día $i$ vea información de días futuros. Eso **contradice la
   causalidad** que el CLAAM impone después. Es especialmente delicado en el decoder, donde la entrada es
-  el propio caudal. Recomendación: padding causal (a la izquierda) y alinear/enmascarar cada ventana
-  agregada para que solo incluya días $\le i$.
+  el propio caudal. La Fig. 5 sugiere MaxPool con stride $= k$ y fusión sin máscara. **Decidido en
+  D-005:** se implementa literal (no causal); no hay fuga del target porque el horizonte entra en ceros.
 - **Kernel size, stride y padding** de Conv1D y MaxPool (¿stride = $k$?, ¿qué pasa con $T = 103$ no
   divisible por 7 ni por 30?).
 - **Pesos compartidos o no** entre las tres ramas y entre el MSFM del encoder y el del decoder.

@@ -21,7 +21,7 @@ cada ambigüedad está en [`paper.md`](paper.md).
 | [D-003](#d-003--evaluación-del-horizonte-de-7-días) | P0 | Evaluación del horizonte de 7 días | — | PENDIENTE |
 | [D-004](#d-004--estrategia-de-pre-entrenamiento-y-fine-tuning) | P0 | Pre-entrenamiento y fine-tuning | D-002 | PENDIENTE |
 | [D-013](#d-013--meteorología-futura-en-test) | P0 | Meteorología futura en test | D-006 | PENDIENTE (en espera del profesor, sin fecha límite) |
-| [D-005](#d-005--causalidad-del-msfm) | P1 | Causalidad del MSFM | — | PENDIENTE |
+| [D-005](#d-005--causalidad-del-msfm) | P1 | Causalidad del MSFM | — | **DECIDIDA** |
 | [D-006](#d-006--covariables-conocidas-en-el-horizonte) | P1 | Covariables conocidas en el horizonte | D-002 | PENDIENTE |
 | [D-007](#d-007--normalización-y-valores-faltantes) | P1 | Normalización y valores faltantes | D-002 | **DECIDIDA** |
 | [D-014](#d-014--hora-de-inicio-de-las-ventanas-y-re-muestreo-de-train) | P1 | Hora de inicio de las ventanas y re-muestreo de train | — | **DECIDIDA** |
@@ -192,14 +192,34 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 ## P1 · Fugas de información
 
 ## D-005 · Causalidad del MSFM
-- Estado: **PENDIENTE**
+- Estado: **DECIDIDA**
 - Prioridad: P1
-- Paper: Sec. 2.2.3, Eq. 6–12. No especifica padding, stride ni máscara.
+- Paper: Sec. 2.2.3, Eq. 6–12 y Fig. 5. El texto no especifica padding, kernel del Conv1D, stride ni
+  máscara. La Fig. 5 dibuja `F_weekly` y `F_monthly` más cortas que `F_daily` (MaxPool sin solapamiento,
+  stride = k) y una "Multi-Head Attention" de fusión sin máscara. La causalidad (Sec. 2.2.2) solo se
+  impone en las atenciones del CLAAM, no en el MSFM.
 - Pregunta abierta: un Conv1D con padding simétrico, un MaxPool de ventana 7/30 o una cross-attention de
   fusión sin máscara dejan que el día `i` vea días futuros, lo que contradice la causalidad del CLAAM.
-- Recomendación actual (`AGENTS.md`): padding causal (a la izquierda) y alinear/enmascarar cada ventana
-  agregada para que solo incluya días `≤ i`.
-- Impacto: si no se resuelve, las ablaciones con y sin MSFM no son comparables.
+- Decisión: **MSFM literal, no causal (opción C)**:
+  - Conv1D con padding simétrico (`same`);
+  - MaxPool con stride = k (sin solapamiento), de modo que las escalas gruesas se acortan a `T / k`;
+  - cross-attention de fusión (Q = escala fina, K = V = escala gruesa) **sin máscara**.
+- Justificación: es la lectura más fiel del paper (texto + Fig. 5) y, con toda probabilidad, lo que
+  implementaron los autores. **No hay fuga del target**: las posiciones del horizonte del decoder
+  entran como ceros (D-007), así que el MSFM solo mezcla información ya disponible en la entrada.
+- Consecuencias:
+  - con `use_msfm: true` el modelo **no es causal internamente**: la posición `i` ve información de
+    `t > i` a través del MSFM, aunque el CAM esté activo;
+  - el test de causalidad (`AGENTS.md` §8) se aplica con `use_msfm: false` y, con MSFM activo, a los
+    bloques de atención que están después del MSFM; el test de **fuga del target** se aplica siempre,
+    también con MSFM;
+  - al interpretar la ablación MSFM/CLAAM (Tabla 5) hay que tener en cuenta que parte de la ganancia
+    del MSFM puede venir de ver hacia adelante dentro de la ventana de entrada.
+- Alternativas consideradas: (A) MSFM causal sin reducir longitud (Conv1D con padding izquierdo,
+  MaxPool deslizante causal, cross-attention con máscara triangular); (B) fiel a la Fig. 5 con padding
+  izquierdo y máscara por bloques completados (`fin del bloque ≤ i`) más una key nula para las primeras
+  posiciones. Descartadas por alejarse de lo que describe el paper.
+- Fecha / autor: 2026-09-28 / equipo.
 - Registrada: 2026-09-25.
 
 ## D-006 · Covariables conocidas en el horizonte
@@ -305,6 +325,8 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   - entrada de una sola variable en el decoder (`d = 1`).
 - Nota (2026-09-27): con datos horarios (384 pasos), las escalas 7/30 días del paper se adaptan; la
   propuesta es `k = 1, 24, 96` (ver D-002).
+- Nota (2026-09-28): D-005 ya fija padding simétrico en el Conv1D, MaxPool con stride = k y fusión sin
+  máscara. Con `T = 384` y `k = 24, 96` la longitud es divisible, así que el MaxPool no necesita padding.
 - Depende de: D-005.
 - Registrada: 2026-09-25.
 
