@@ -18,7 +18,7 @@ cada ambigüedad está en [`paper.md`](paper.md).
 |---|---|---|---|---|
 | [D-002](#d-002--dataset-del-profesor) | P0 | Dataset del profesor | — | **DECIDIDA** |
 | [D-001](#d-001--diferenciabilidad-de-la-máscara-lag-aware-eq-5) | P0 | Diferenciabilidad de la máscara lag-aware τ | — | **DECIDIDA** |
-| [D-003](#d-003--evaluación-del-horizonte-de-7-días) | P0 | Evaluación del horizonte de 7 días | — | PENDIENTE |
+| [D-003](#d-003--evaluación-del-horizonte-de-predicción) | P0 | Evaluación del horizonte de predicción | — | **DECIDIDA** |
 | [D-004](#d-004--estrategia-de-pre-entrenamiento-y-fine-tuning) | P0 | Pre-entrenamiento y fine-tuning | D-002 | PENDIENTE |
 | [D-013](#d-013--meteorología-futura-en-test) | P0 | Meteorología futura en test | D-006 | PENDIENTE (en espera del profesor, sin fecha límite) |
 | [D-005](#d-005--causalidad-del-msfm) | P1 | Causalidad del MSFM | — | **DECIDIDA** |
@@ -83,6 +83,10 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
     train (no hay fechas), solo que son disjuntos;
   - las ventanas de train se solapan y permiten reconstruir ~11.5 años horarios por cuenca;
   - varios canales meteorológicos son trihorarios interpolados; el caudal es horario.
+- Nota (2026-09-28): el caudal es **específico** (`specific_discharge`, normalizado por el área de la
+  cuenca). Las unidades `mm/h` se infieren del nombre de la variable (`metadata.json`: sin unidades
+  declaradas) y el área no viene en los datos. Son coherentes con la magnitud: caudal medio mediano en
+  val ≈ 0.048 mm/h ≈ 1.2 mm/día, del mismo orden que las cuencas del paper (28.6 % bajo 1 mm/día).
 - Decisión (propuesta del 2026-09-27, aprobada por el equipo el 2026-09-28):
   - se mantiene la resolución **horaria**; no se agrega a diario;
   - encoder y decoder de **384 pasos** (336 h de historia + 48 h de horizonte), equivalente a los
@@ -143,17 +147,56 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   - Ambas configurables: descartada por el coste de implementación frente a lo que aporta al laboratorio.
 - Fecha / autor: 2026-09-25 / equipo.
 
-## D-003 · Evaluación del horizonte de 7 días
-- Estado: **PENDIENTE**
+## D-003 · Evaluación del horizonte de predicción
+- Estado: **DECIDIDA**
 - Prioridad: P0
 - Paper: Sec. 3.2 y Eq. 16–20. Las métricas se definen sobre una serie, pero el modelo predice 7 días por
-  ventana y el paper no dice cómo se agregan.
+  ventana y el paper no dice cómo se agregan. Tampoco dice nada sobre métricas indefinidas o cuencas
+  excluidas: solo que NSE y KGE van de −∞ a 1. Los resultados son mediana y media sobre las 241 cuencas.
 - Pregunta abierta: ¿se evalúa cada día de anticipación por separado (lead 1…7), solo el primer día, o el
   promedio del horizonte?
 - Propuesta (2026-09-27): el horizonte es de 48 h y las ventanas de test no se
   solapan. Métrica principal por cuenca sobre todos los pares (ventana, hora de anticipación), con
   mediana y media sobre las 508 cuencas; como secundaria, NSE y RMSE por hora de anticipación (1…48).
+- Decisión:
+  - **Métrica principal (pooled):** por cuenca, las 5 métricas (NSE, KGE, RMSE, TPE-2 %, BIAS) se calculan
+    sobre todos los pares (ventana, hora de anticipación 1…48) juntos, en unidades originales (mm/h).
+    Se reporta la mediana y la media sobre las cuencas.
+  - **Secundaria:** NSE y RMSE por hora de anticipación (1…48), con la misma agregación por cuenca.
+  - **TPE-2 %:** sobre el 2 % de horas con mayor caudal observado de cada cuenca, dentro de la serie
+    pooled.
+  - **Casos degenerados:** si el denominador observado de una métrica en una cuenca es menor que un
+    umbral (`min_obs_std` y `min_obs_mean`, por defecto `1e-3` mm/h, configurables), esa métrica queda
+    en `NaN` para esa cuenca y no entra en la mediana ni en la media:
+    - `σ_obs < min_obs_std` → NSE y KGE en `NaN` (denominador de NSE y de la λ del KGE);
+    - `μ_obs < min_obs_mean` → BIAS, TPE-2 % y KGE en `NaN` (denominador de BIAS, TPE-2 % y γ del KGE);
+    - RMSE no tiene denominador y se calcula siempre;
+    - si la predicción es constante (`σ_pred = 0`), se toma ρ = 0 en el KGE en vez de excluir la cuenca.
+  - La exclusión depende **solo de lo observado**, así que las cuencas excluidas son las mismas para
+    todos los modelos. Se registra en MLflow cuántas cuencas se excluyen por métrica.
+  - Además se registra la versión **literal** (las 508 cuencas, sin excluir) como referencia; las
+    tablas principales usan la versión con exclusión.
+  - **Split reportado:** val (`split == 1`) de forma **provisional** hasta tener el `y_aux` de test
+    (D-013); en cuanto llegue, las tablas se regeneran sobre test a partir de los mismos runs.
+- Justificación:
+  - pooled aplica las Eq. 16–20 tal como están escritas (una serie por cuenca). Las ventanas de val
+    son tramos de 48 h dispersos, sin solapamiento (solo 418 de 17 634 pares consecutivos son
+    contiguos), así que no hay horas duplicadas;
+  - el paper evalúa 10 años diarios por cuenca y nunca tiene denominadores diminutos. En val hay ~38
+    ventanas por cuenca (mínimo 11), y en tramos secos la serie puede ser casi plana: 11 cuencas tienen
+    `σ_obs < 1e-3` mm/h y 15 tienen `μ_obs < 1e-3` mm/h (15 en total). Con `σ_obs = 2·10⁻⁵` mm/h, un
+    error de 0.001 mm/h da NSE ≈ −2 500 y mueve la media de las 508 cuencas en ~5 puntos;
+  - el caudal es específico (normalizado por área, D-002), así que un umbral absoluto en mm/h trata
+    igual a cuencas de distinto tamaño; `1e-3` mm/h ≈ 0.024 mm/día, ~40× por debajo del umbral de
+    "caudal bajo" del paper (1 mm/día);
+  - reportar sobre val sesga los resultados hacia arriba porque val también se usa para early stopping
+    y selección de modelo; el sesgo es parecido entre modelos, así que las comparaciones siguen siendo
+    razonables, pero no son una estimación limpia del desempeño.
+- Alternativas consideradas: métrica por lead como principal (48 números por métrica); solo el lead 1;
+  promedio de métricas por lead; no excluir cuencas (la media queda dominada por cuencas secas); NSE
+  acotado `1/(2 − NSE)` (se aleja del paper).
 - Impacto: define cómo se leen todas las tablas de resultados y la comparación con el baseline.
+- Fecha / autor: 2026-09-28 / equipo.
 - Registrada: 2026-09-25.
 
 ## D-004 · Estrategia de pre-entrenamiento y fine-tuning
@@ -188,6 +231,8 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   - early stopping y selección de modelo se hacen con **val** (`split == 1`), pero val no se reporta
     como resultado final (equipo, 2026-09-28; reemplaza la idea de separar tramos de train, que
     chocaba con D-014);
+  - actualización (equipo, 2026-09-28): mientras no llegue test, las tablas se reportan sobre **val de
+    forma provisional** (D-003), sabiendo que salen optimistas por usar val en la selección de modelo;
   - el pipeline acepta `y_aux` de test como opcional: si `test.h5` lo trae, `clamf.data.prepare` lo
     cachea y el split de test queda disponible; sin él, el Dataset de test lanza un error explícito.
     La opción b **no se implementa** hasta que el profesor responda que no;

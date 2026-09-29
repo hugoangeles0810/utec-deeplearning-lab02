@@ -113,8 +113,9 @@ uv run mlflow ui                                               # ver experimento
 - Un *experiment* de MLflow por estudio (p. ej. `clamf-main`, `ablation-clamf`, `ablation-claam`, `baseline`);
   un *run* por entrenamiento.
 - Registrar siempre: config completa aplanada como params, seed, device, git commit; loss train/val por epoch;
-  métricas finales de test (mediana y media de cada métrica); artifacts: YAML usado, mejor checkpoint,
-  predicciones de test (CSV/Parquet) y figuras.
+  métricas finales de test (mediana y media de cada métrica, con y sin cuencas excluidas, y cuántas se
+  excluyen; ver D-003; mientras no haya test, sobre val de forma provisional); artifacts: YAML usado,
+  mejor checkpoint, predicciones de test (CSV/Parquet) y figuras.
 - Las tablas y figuras de resultados se generan **a partir de los runs de MLflow**, no copiando números a mano.
 
 ## 7. Reglas de implementación
