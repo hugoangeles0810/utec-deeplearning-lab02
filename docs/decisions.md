@@ -250,6 +250,11 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
      los 24 GB del 4090 junto al modelo: se carga una vez como tensores en el dispositivo y los batches
      se arman con índices barajados por el generador con seed. Flag `data.preload_to_device`
      (default `true`).
+     Medición (2026-09-29, agente, MacBook M5 Pro con MPS y datos reales): la precarga tarda ~5 s y
+     ocupa 4.7 GB (train y val; test aún no tiene `y_aux`); entrega ~2 400 batches/s frente a ~410 del `DataLoader`
+     (`num_workers: 0`, cache en memoria del sistema operativo), es decir 0.4 s frente a 2.4 s por
+     epoch. Ante los ~54 s por epoch esperados en el 4090, la ganancia en la Mac es de ~4 %; en
+     RunPod (CPU y disco desconocidos) está por medir en la primera corrida.
   4. **Batch de 256** (`data.batch_size`, ya en `base.yaml`). Con fp32 y batch 512 no cabe en 24 GB.
   5. **Checkpoints reanudables.** Guardar modelo, optimizador, epoch, mejor pérdida de val, contador
      de paciencia y estado del RNG al final de cada epoch, y poder reanudar desde ahí (el pod se puede
