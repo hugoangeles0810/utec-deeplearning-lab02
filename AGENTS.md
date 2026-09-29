@@ -13,8 +13,9 @@ que entrega el profesor.
   resultados y todo lo que el paper **no especifica**. Léelo antes de implementar cualquier módulo.
 - **Dataset: recibido** (Rainfall-Runoff, horario, ventanas de 336 h → 48 h, 12 canales; ver D-002 en
   [`docs/decisions.md`](docs/decisions.md)). Se descarga a `data/raw/` con
-  `uv run python -m clamf.data.download`. Su adaptación al modelo (ventana, escalas, entradas) sigue
-  pendiente; mientras tanto, deja frecuencia, longitudes y canales parametrizados en la config.
+  `uv run python -m clamf.data.download`. Adaptación decidida en D-002: resolución horaria, encoder y
+  decoder de 384 pasos (336 h + 48 h), salida en las 48 últimas posiciones y escalas MSFM `k = 1, 24, 96`.
+  Aun así, deja frecuencia, longitudes, escalas y canales parametrizados en la config.
 
 ## 2. Alcance del laboratorio
 
