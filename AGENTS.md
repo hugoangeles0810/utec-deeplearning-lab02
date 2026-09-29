@@ -100,6 +100,18 @@ uv run mlflow ui                                               # ver experimento
   y documentarlo; no escribir ramas de código específicas por dispositivo salvo que sea imprescindible.
 - Los tests deben correr en CPU y ser rápidos (modelos diminutos, pocos pasos).
 
+### Rendimiento del entrenamiento — obligatorio (D-004)
+La grilla final se entrena en un RTX 4090 (RunPod) con un tope de 200 epochs. Solo entra en el
+presupuesto si el código incluye estos ajustes (detalle y mediciones en `docs/decisions.md`, D-004):
+1. **Atención fusionada:** `F.scaled_dot_product_attention` en todas las atenciones (`is_causal` para
+   CAM, `attn_mask` float para el sesgo lag-aware); el cálculo explícito solo cuando se piden los pesos.
+   Flag `model.fused_attention`.
+2. **bf16 en CUDA:** `torch.autocast(dtype=torch.bfloat16)` en el forward; FFT, pérdida y métricas en
+   float32. Flag `train.amp: bf16 | none`.
+3. **Datos precargados en el dispositivo** (`data.preload_to_device`), sin `DataLoader` como cuello de
+   botella.
+4. **Batch 256** y **checkpoints reanudables** (modelo, optimizador, epoch, early stopping y RNG).
+
 ## 5. Configuración de experimentos
 
 - YAML en `configs/`, cargado a **dataclasses tipadas** en `clamf/config.py` (secciones sugeridas:
@@ -112,7 +124,8 @@ uv run mlflow ui                                               # ver experimento
 - Tracking local (`mlruns/` o `sqlite:///mlflow.db`), configurable por variable de entorno `MLFLOW_TRACKING_URI`.
 - Un *experiment* de MLflow por estudio (p. ej. `clamf-main`, `ablation-clamf`, `ablation-claam`, `baseline`);
   un *run* por entrenamiento.
-- Registrar siempre: config completa aplanada como params, seed, device, git commit; loss train/val por epoch;
+- Registrar siempre: config completa aplanada como params, seed, device (y GPU), `amp`, git commit;
+  loss train/val y tiempo por epoch; epoch del mejor checkpoint (D-004);
   métricas finales de test (mediana y media de cada métrica, con y sin cuencas excluidas, y cuántas se
   excluyen; ver D-003; mientras no haya test, sobre val de forma provisional); artifacts: YAML usado,
   mejor checkpoint, predicciones de test (CSV/Parquet) y figuras.

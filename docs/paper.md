@@ -566,7 +566,7 @@ Además de los huecos de cada aporte (§4.4, §5 y §6), el paper no detalla:
 - **Qué posiciones de la salida se usan como predicción:** lo natural son las 7 últimas posiciones del
   decoder, proyectadas a 1 dimensión.
 - **Datos de pre-entrenamiento y de fine-tuning:** no dice si se pre-entrena con todas las cuencas y se
-  ajusta por cuenca o por región. Para nuestro dataset dependerá de cuántas series tenga.
+  ajusta por cuenca o por región. **Decidido en D-004:** un modelo global sin fine-tuning.
 - **Métricas con horizonte de 7 días:** no aclara si se evalúa cada día de anticipación por separado, solo
   el primero o el promedio del horizonte. Tampoco cómo trata métricas indefinidas (varianza o caudal
   observado ≈ 0). **Decidido en D-003.**
