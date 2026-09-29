@@ -44,8 +44,8 @@ class DataConfig:
     normalization: NormalizationConfig = field(default_factory=NormalizationConfig)
     batch_size: int = 256
     eval_batch_size: int = 512
-    num_workers: int = 0
-    preload_to_device: bool = True  # D-004: keep the train cache on the device, no DataLoader
+    num_workers: int = 0  # DataLoader only (preload_to_device: false)
+    preload_to_device: bool = True  # D-004: load each split onto the device, no DataLoader
 
     def __post_init__(self) -> None:
         for name in ("history_hours", "horizon_hours", "batch_size", "eval_batch_size"):
