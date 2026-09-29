@@ -25,12 +25,13 @@ cada ambigüedad está en [`paper.md`](paper.md).
 | [D-006](#d-006--covariables-conocidas-en-el-horizonte) | P1 | Covariables conocidas en el horizonte | D-002 | PENDIENTE |
 | [D-007](#d-007--normalización-y-valores-faltantes) | P1 | Normalización y valores faltantes | D-002 | **DECIDIDA** |
 | [D-014](#d-014--hora-de-inicio-de-las-ventanas-y-re-muestreo-de-train) | P1 | Hora de inicio de las ventanas y re-muestreo de train | — | **DECIDIDA** |
-| [D-008](#d-008--detalles-de-freqmae) | P2 | Detalles de FreqMAE | D-003 | PENDIENTE |
+| [D-008](#d-008--detalles-de-freqmae) | P2 | Detalles de FreqMAE | D-003 | **DECIDIDA** |
 | [D-009](#d-009--red-que-predice-τ) | P2 | Red que predice τ | — | PENDIENTE |
 | [D-010](#d-010--estructura-del-msfm) | P2 | Estructura del MSFM | D-005 | PENDIENTE |
 | [D-011](#d-011--posiciones-de-salida-de-la-predicción) | P2 | Posiciones de salida de la predicción | D-002 | **DECIDIDA** |
 | [D-015](#d-015--detalles-de-los-scalers-y-del-cache-de-datos) | P2 | Detalles de los scalers y del cache de datos | D-007 | **DECIDIDA** |
 | [D-012](#d-012--positional-encoding-batch-size-y-scheduler) | P3 | Positional encoding, batch size y scheduler | — | PENDIENTE |
+| [D-016](#d-016--detalles-de-cálculo-de-las-métricas) | P3 | Detalles de cálculo de las métricas | D-003 | **DECIDIDA** |
 
 Otros pendientes (no técnicos): registrar la **fecha de entrega** de la presentación y el video.
 
@@ -404,16 +405,36 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 ## P2 · Arquitectura y pérdida
 
 ## D-008 · Detalles de FreqMAE
-- Estado: **PENDIENTE**
+- Estado: **DECIDIDA**
 - Prioridad: P2
-- Paper: Sec. 2.2.4, Eq. 13–15. Ver `paper.md` §6.
-- Pregunta abierta:
-  - tramo sobre el que se calcula (solo los 7 días predichos o toda la secuencia);
-  - `fft` o `rfft`;
-  - valor de `N` y normalización de la FFT (`norm`);
-  - reducción sobre el batch y las series;
-  - escala de los datos (normalizada o unidades originales).
-- Depende de: D-003 (para que la pérdida sea coherente con la evaluación).
+- Paper: Sec. 2.2.4, Eq. 13–15. Ver `paper.md` §6. La Eq. 15 suma el módulo de la diferencia de las
+  DFT sobre `k = 0…N−1`; no dice sobre qué tramo, con qué `N`, qué normalización ni cómo se reduce
+  sobre el batch.
+- Decisión (`src/clamf/losses.py`):
+  - **tramo:** solo las 48 h del horizonte (la salida del modelo, D-011); la historia no entra en la
+    pérdida;
+  - **`torch.fft.fft` completa**, no `rfft`: es la Eq. 15 literal. Para señales reales el espectro es
+    simétrico, así que equivale a `rfft` con las frecuencias intermedias contadas dos veces;
+  - **`N = H = 48`**, sin zero-padding, y normalización `"backward"` (DFT sin escalar, como la Eq. 14);
+  - **reducción:** suma sobre las frecuencias (Eq. 15) y **media sobre el batch** (cada ventana es una
+    serie);
+  - **escala:** caudal **normalizado por cuenca** (D-007), el mismo espacio en que el modelo predice.
+    Las métricas se calculan después en mm/h;
+  - se calcula como `|DFT(ŷ − y)|`, que por linealidad es igual a `|DFT(ŷ) − DFT(y)|`;
+  - la pérdida (FreqMAE, MSE o MAE) se calcula en **float32** aunque el forward use bf16 (D-004);
+  - la FFT corre nativa en MPS (probado con torch 2.14), sin `PYTORCH_ENABLE_MPS_FALLBACK`.
+- Justificación:
+  - el horizonte es lo único que se evalúa (D-003) y la historia del decoder es entrada, no predicción;
+  - `fft` completa y sin normalizar sigue la ecuación tal cual; Adam es casi invariante a la escala de
+    la pérdida, así que el factor ~`N` no afecta al entrenamiento, y el early stopping solo compara
+    valores dentro del mismo run;
+  - zero-padding solo interpola el espectro, no añade información;
+  - en el espacio normalizado por cuenca cada cuenca pesa parecido, igual que en el NSE por cuenca
+    (misma razón que D-007). En mm/h dominarían las cuencas más húmedas.
+- Alternativas consideradas: `rfft` (cambia el peso relativo de la componente continua y de Nyquist);
+  `norm="ortho"` o media sobre las frecuencias (misma pérdida a escala); pérdida en mm/h; incluir la
+  historia de la salida del decoder.
+- Fecha / autor: 2026-09-29 / agente.
 - Registrada: 2026-09-25.
 
 ## D-009 · Red que predice τ
@@ -492,3 +513,27 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Pregunta abierta: positional encoding sinusoidal o aprendido, tamaño de batch y si se usa un scheduler
   para el learning rate.
 - Registrada: 2026-09-25.
+
+## D-016 · Detalles de cálculo de las métricas
+- Estado: **DECIDIDA**
+- Prioridad: P3
+- Paper: Eq. 16–20. No dice la varianza muestral o poblacional, cuántas horas forman el 2 % de picos,
+  ni cómo se desempatan.
+- Decisión (`src/clamf/metrics.py`):
+  - desviaciones estándar **poblacionales** (`ddof = 0`) en el KGE y en el umbral `min_obs_std`;
+  - TPE-2 %: `max(1, round(0.02 · n))` horas con el mayor caudal observado de la cuenca (serie pooled,
+    D-003); los empates se resuelven por orden estable. Su denominador es la suma del caudal observado
+    en esas horas; si es 0, la métrica queda en `NaN`;
+  - un denominador exactamente 0 siempre da `NaN`, también en la versión literal (umbrales en 0);
+  - KGE: predicción constante = rango 0 exacto (`ptp`), así se evita el ruido numérico de
+    `std ≈ 1e-17`; ρ se recorta a `[−1, 1]`;
+  - métricas por hora de anticipación: el umbral del NSE usa la `σ_obs` de la serie de esa hora;
+  - mediana y media sobre las cuencas ignoran los `NaN` y se registra cuántos hay por métrica
+    (`<métrica>_n_excluded`);
+  - todo el cálculo se hace en `float64` con numpy (fuera del dispositivo, así que no aplica la
+    restricción de MPS).
+- Justificación: son los defaults habituales en hidrología. Redondear evita que 2 % de 100 horas dé 3
+  por error de coma flotante, y el mínimo de 1 hora mantiene la métrica definida en series cortas.
+- Alternativas consideradas: `ddof = 1`; `ceil` o `floor` para el número de horas pico.
+- Fecha / autor: 2026-09-29 / agente.
+- Registrada: 2026-09-29.
