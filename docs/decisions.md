@@ -125,8 +125,10 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   - Calcular el sesgo con `torch.nn.functional.logsigmoid` (numéricamente estable).
   - **Margen `δ = 0.5`**: desplaza el borde medio paso para que los días `j ≤ i` nunca se penalicen, aunque
     `τ_i = 0` (sin margen, el día actual recibiría `log(0.5) ≈ −0.69`).
-  - **Temperatura `T` en la config** (default `1.0`, en pasos de tiempo), con opción de reducirla durante el
-    entrenamiento (annealing) para acercarse a la máscara binaria del paper. Con `T → 0` se recupera la Eq. 5.
+  - **Temperatura `T` en la config** (`model.lag_temperature`, default `1.0`, en pasos de tiempo) y
+    margen `δ` en `model.lag_margin`. Con `T → 0` se recupera la Eq. 5. `T` es **constante** durante el
+    entrenamiento: el annealing hacia la máscara binaria no está implementado (el LAAM expone
+    `temperature` como atributo para poder agregarlo), así que todos los runs de la grilla usan `T = 1`.
   - **Inicialización de `τ` cercana a 0**: sesgo negativo en la última capa antes del Softplus, para que el
     modelo arranque como atención causal y amplíe la ventana solo si le sirve.
   - **Monitoreo de `τ`**: registrar en MLflow su distribución (media y percentiles). El paper no acota `τ`;
@@ -382,6 +384,9 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
     test, se evalúa test sobre los mismos runs;
   - el pipeline acepta `y_aux` de test como opcional: si `test.h5` lo trae, `clamf.data.prepare` lo
     cachea y el split de test queda disponible; sin él, el Dataset de test lanza un error explícito.
+    El código solo lo lee como clave `y_aux` dentro de `test.h5`: si llega en otro archivo, hay que
+    agregarlo ahí. Como `test.h5` cambia, el cache queda obsoleto y se regenera con
+    `clamf.data.prepare --force` (D-015).
 - Si el profesor entrega el `y_aux` de test, antes de usarlo se verifica:
   - que tenga shape `(27983, 48, 11)` y esté alineado por `Id` con `test.h5`;
   - que continúe a `X` sin salto, como pasa con `y_aux` en train/val.
@@ -716,8 +721,8 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
     (mediana 0.106), así que el mínimo solo toca a una cuenca y apenas;
   - `clamf.data.prepare` escribe un cache `.npy` ya normalizado en `data/processed/` (~5 GB, ~1 min)
     que los Datasets abren con memmap. `manifest.json` guarda tamaño y mtime de los archivos raw y
-    la normalización; si no coinciden con la config, el Dataset falla y pide re-generar con
-    `--force`;
+    la normalización; si no coinciden con la config, los loaders (`build_dataloaders`, `build_loader`)
+    y `prepare` sin `--force` fallan con `StaleCacheError` y piden re-generar con `--force`;
   - `prepare` también comprueba, con un hash de cada fila horaria, que val y test no compartan
     horas con train (0 compartidas con los datos reales).
 - Justificación: normalizar una vez evita repetir el trabajo en cada run, y el memmap mantiene baja

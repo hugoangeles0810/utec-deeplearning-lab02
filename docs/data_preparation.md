@@ -25,7 +25,7 @@ Los datos vienen **limpios**: no hay NaN, infinitos ni centinelas en ningún spl
 | `enc_x` | `(B, 384, 11)` | Meteorología: `X[..., :11]` (336 h) seguida de `y_aux` (48 h) |
 | `dec_x` | `(B, 384, 1)` | Caudal: `X[..., 11]` (336 h) seguido de 48 ceros |
 | `target` | `(B, 48)` | `y`; solo se usa en la pérdida |
-| `basin_id` | `(B,)` | Para normalizar y des-normalizar el caudal |
+| `basin_id` | `(B,)` | Para des-normalizar el caudal y agregar las métricas por cuenca (el cache ya viene normalizado) |
 
 - El encoder recibe `y_aux`, como en el paper, aunque `metadata.json` la marca como solo supervisión
   (D-006). Covariables conocidas en el horizonte: los 11 canales meteorológicos; el caudal del

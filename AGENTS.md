@@ -13,9 +13,12 @@ que entrega el profesor.
   resultados y todo lo que el paper **no especifica**. Léelo antes de implementar cualquier módulo.
 - **Dataset: recibido** (Rainfall-Runoff, horario, ventanas de 336 h → 48 h, 12 canales; ver D-002 en
   [`docs/decisions.md`](docs/decisions.md)). Se descarga a `data/raw/` con
-  `uv run python -m clamf.data.download`. Adaptación decidida en D-002: resolución horaria, encoder y
-  decoder de 384 pasos (336 h + 48 h), salida en las 48 últimas posiciones y escalas MSFM `k = 1, 24, 96`.
-  Aun así, deja frecuencia, longitudes, escalas y canales parametrizados en la config.
+  `uv run python -m clamf.data.download` y se normaliza una vez a `data/processed/` con
+  `uv run python -m clamf.data.prepare` (ver [`docs/data_preparation.md`](docs/data_preparation.md)).
+  Adaptación decidida en D-002: resolución horaria, encoder y decoder de 384 pasos (336 h + 48 h), salida
+  en las 48 últimas posiciones y escalas MSFM `k = 1, 24, 96`. Longitudes (`data.history_hours`,
+  `data.horizon_hours`) y escalas (`model.msfm_scales`) están en la config; los canales se leen de
+  `metadata.json`.
 
 ## 2. Alcance del laboratorio
 
@@ -36,8 +39,8 @@ cómo se lanza: [`docs/experiments.md`](docs/experiments.md).
 Fuera del alcance salvo que el equipo lo pida: comparación de pérdidas (MAE/MSE/sjNSE), baselines
 LSTM-MSV-S2S / RR-Former / DTSW-transformer.
 
-Diseña los módulos para que **cada componente se active/desactive por config** (flags `use_msfm`,
-`use_causal_encoder`, `use_lag_aware_cross_attn`, `loss`), de modo que ablaciones y baseline sean solo
+Diseña los módulos para que **cada componente se active/desactive por config** (flags `model.use_msfm`,
+`model.use_causal_encoder`, `model.use_lag_aware_cross_attn` y `train.loss`), de modo que ablaciones y baseline sean solo
 archivos YAML distintos, no código duplicado. Los módulos de atención deben poder **devolver los pesos de
 atención** (opcionalmente) para visualizarlos como en las Figs. 2 y 9.
 
@@ -94,6 +97,7 @@ Gestor: **uv** con `pyproject.toml` (Python 3.11, como el paper).
 ```bash
 uv sync                                                        # instalar dependencias
 uv run python -m clamf.data.download                           # dataset → data/raw/ (sin uv: python src/clamf/data/download.py)
+uv run python -m clamf.data.prepare --config configs/base.yaml # cache normalizado → data/processed/ (una vez; --force si cambian los raw)
 uv run pytest                                                  # tests
 uv run ruff check . && uv run ruff format .                    # lint + formato
 uv run python -m clamf.train --config configs/experiments/clamf.yaml
@@ -148,8 +152,10 @@ presupuesto si el código incluye estos ajustes (detalle y mediciones en `docs/d
 - Registrar siempre: config completa aplanada como params, seed, device (y GPU), `amp`, git commit;
   loss train/val y tiempo por epoch; epoch del mejor checkpoint (D-004);
   métricas finales de test (mediana y media de cada métrica, con y sin cuencas excluidas, y cuántas se
-  excluyen; ver D-003; mientras no haya test, sobre val de forma provisional); artifacts: YAML usado,
-  mejor checkpoint, predicciones de test (CSV/Parquet) y figuras.
+  excluyen; ver D-003; mientras no haya test, sobre val de forma provisional); artifacts: YAML usado y
+  config resuelta, `scalers.json`, mejor checkpoint y, por split evaluado, predicciones (Parquet) y
+  métricas por cuenca y por hora de anticipación (CSV). Las figuras no se registran en el run: se
+  generan después en `reports/figures/` (§11).
 - Las tablas y figuras de resultados se generan **a partir de los runs de MLflow**, no copiando números a mano.
 
 ## 7. Reglas de implementación

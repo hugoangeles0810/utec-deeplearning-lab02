@@ -85,7 +85,8 @@ tmux new -d -s grid 'bash scripts/runpod/run_grid.sh'
 `run_grid.sh` corre `python -m clamf.grid`. Entrena los 6 runs en orden (`clamf`, `vanilla`, `claam`,
 `msfm`, `cam`, `laam`) en el experimento `clamf-grid` y evalúa cada uno en val. Al terminar hace un
 snapshot del store y **detiene el pod** (`runpodctl stop pod`), haya salido bien o mal. Con `STOP_POD=0`
-el pod queda encendido.
+el pod queda encendido. Si un run falla, `clamf.grid` registra el error en el log y sigue con el
+siguiente; al final imprime una tabla con el estado de cada run y sale con código distinto de 0.
 
 Seguimiento:
 
@@ -122,7 +123,16 @@ usan `MLFLOW_TRACKING_URI`.
 
 Se puede correr durante la grilla, como respaldo, y cuantas veces haga falta: cada vez reemplaza
 `results/runpod/` completo. Por eso lo que se registre en ese store desde la Mac (por ejemplo,
-`clamf.evaluate --split test`) se hace **después** del último `pull.sh`.
+`clamf.evaluate --split test`) se hace **después** del último `pull.sh`, apuntando a ese store:
+
+```bash
+MLFLOW_TRACKING_URI=sqlite:///results/runpod/mlflow.db \
+  uv run python -m clamf.evaluate --config configs/experiments/clamf.yaml --run-id <run id> --split test
+```
+
+`clamf.evaluate` no encuentra `best.pt` en `checkpoints/<run id>/` de la Mac y lo baja de los artifacts
+del run (ya reubicados). Usa el cache local de `data/processed/`, que tiene que incluir el `y_aux` de
+test (D-013).
 
 Comprobar que los datos del pod y de la Mac son los mismos: el `scalers.json` de cualquier run debe
 ser idéntico al de la Mac.
