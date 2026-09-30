@@ -27,7 +27,7 @@ Python, caché de uv, datos, `mlflow.db`, `mlruns/`, `checkpoints/` y `logs/` (`
 
 | Opción | Valor |
 |---|---|
-| Cloud | Community Cloud, **on-demand** (no spot: un spot se puede interrumpir) |
+| Cloud | Community Cloud (~$0.34/h) o, si no hay 4090 con CUDA ≥ 13, Secure Cloud (~$0.74/h); siempre **on-demand** (un spot se puede interrumpir) |
 | GPU | 1 × RTX 4090 |
 | Filtro *CUDA version* | **13.0**. `torch 2.14` del lockfile trae wheels de CUDA 13.0 y necesita un driver NVIDIA ≥ 580 |
 | Template | PyTorch oficial de RunPod. Solo aporta el sistema: uv instala su propio Python y torch |
@@ -95,8 +95,7 @@ tail -f logs/grid-*.log
 nvidia-smi
 ```
 
-La primera epoch de `clamf` da el tiempo real por epoch; se esperan ~0.9 min (D-004). Anotarlo en
-D-004 junto con el tiempo de la precarga en el pod.
+Referencia (D-004): `clamf` tarda ~60 s por epoch y la grilla completa, ~4 h.
 
 **Si el pod se reinicia o el proceso muere:** volver a correr `setup.sh` y relanzar `run_grid.sh`.
 `clamf.grid` salta los runs terminados, reanuda el que quedó a medias desde su `last.pt` (mismo run
@@ -141,7 +140,9 @@ diff results/runpod/mlruns/<exp>/<run>/artifacts/data/scalers.json data/processe
 
 ## Costos aproximados
 
-- GPU: ~$0.34/h (D-004). La grilla completa cuesta como máximo ~18 h (~$6), menos con early stopping.
+- GPU: en la corrida del 2026-09-30 (Secure Cloud, $0.74/h) la grilla tomó ~4 h y el pod estuvo
+  encendido ~4.6 h (~$3.40 con setup y smoke test; D-004). El peor caso, si ningún run para antes de
+  las 200 epochs, es ~18 h.
 - Volumen: se cobra también con el pod detenido; por eso se termina el pod apenas se bajan los
   resultados.
 
