@@ -97,8 +97,8 @@ uv run mlflow ui                                               # ver experimento
 ```
 
 - Agrega dependencias con `uv add <paquete>` (o `uv add --dev` para herramientas); no edites el lockfile a mano.
-- Mantén las dependencias mínimas: `torch`, `numpy`, `pandas`, `pyyaml`, `mlflow`, `matplotlib`;
-  dev: `pytest`, `ruff`, `jupyter`.
+- Mantén las dependencias mínimas: `torch`, `numpy`, `pandas`, `pyyaml`, `mlflow`, `matplotlib`,
+  `h5py` (dataset), `pyarrow` (predicciones en Parquet); dev: `pytest`, `ruff`, `jupyter`.
 
 ### Dispositivos (Mac MPS y GPU NVIDIA)
 - Selección de dispositivo centralizada en `clamf/utils/device.py`: `cuda` → `mps` → `cpu`,

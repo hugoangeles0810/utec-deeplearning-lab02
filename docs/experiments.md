@@ -50,7 +50,13 @@ Los 6 runs van al experimento de MLflow `clamf-grid` y cada uno se llama como su
 uv run python -m clamf.train --config configs/experiments/clamf.yaml
 uv run python -m clamf.train --config configs/experiments/clamf.yaml --resume <mlflow run id>
 uv run python -m clamf.train --config configs/experiments/dev.yaml     # prueba corta
+uv run python -m clamf.evaluate --config configs/experiments/clamf.yaml --run-id <mlflow run id>
 ```
+
+- `clamf.evaluate` evalúa el mejor checkpoint del run en val (provisional, D-003) y registra las
+  métricas, las métricas por hora de anticipación y las predicciones **en el mismo run**, con el
+  prefijo `val/`. Con `--split test` hace lo mismo sobre test cuando tenga `y_aux` (D-013).
+  Detalle de lo que registra en D-003.
 
 - Un run caído se reanuda con `--resume` y el **mismo YAML**, sin lanzar uno nuevo (D-004).
 - Si una variante se vuelve a entrenar desde cero (por ejemplo, tras corregir un bug), el run anterior
