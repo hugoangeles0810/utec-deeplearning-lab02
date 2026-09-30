@@ -76,6 +76,8 @@ class ModelConfig:
     msfm_scales: tuple[int, ...] = (1, 24, 96)  # hours; D-002
     lag_temperature: float = 1.0  # T of the soft lag-aware mask; D-001
     lag_margin: float = 0.5  # delta of the soft lag-aware mask; D-001
+    lag_eps: float = 1e-6  # epsilon of the content aggregation, Eq. (2); D-009
+    lag_tau_init_bias: float = -4.0  # initial b2 of Eq. (4), tau ~ 0.02 steps; D-001, D-009
     fused_attention: bool = True  # scaled_dot_product_attention unless weights are requested; D-004
 
     def __post_init__(self) -> None:
@@ -93,6 +95,8 @@ class ModelConfig:
             raise ConfigError("model.lag_temperature must be > 0")
         if self.lag_margin < 0:
             raise ConfigError("model.lag_margin must be >= 0")
+        if self.lag_eps <= 0:
+            raise ConfigError("model.lag_eps must be > 0")
 
 
 @dataclass(frozen=True)
