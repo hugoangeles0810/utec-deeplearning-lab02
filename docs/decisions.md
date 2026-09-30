@@ -334,6 +334,26 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
     Mac bajando `best.pt` de los artifacts.
   - `torch 2.14` del lockfile trae wheels de CUDA 13.0, así que el pod necesita un driver NVIDIA ≥ 580
     (filtro CUDA 13.0 al crearlo).
+- Medición en RunPod (2026-09-30, agente; grilla completa, commit `c0ecaa9`):
+  - pod: 1 × RTX 4090 en **Secure Cloud** (US-NC-1, $0.74/h, driver 595, CUDA 13.2). Community no
+    tenía 4090 con CUDA ≥ 13 al crearlo; el equipo eligió Secure en vez de esperar.
+  - `setup.sh` completo (uv, entorno, descarga de Drive, cache y 302 tests) tomó ~10 min.
+  - la precarga no se registra aparte: desde que arranca `clamf.grid` hasta el inicio de la primera
+    epoch (uv, creación de `mlflow.db` y precarga) pasan ~23 s.
+  - tiempo por epoch y duración de cada run (todas terminaron por early stopping, paciencia 20):
+
+    | Run | Mejor epoch | Epochs | Tiempo por epoch | Duración |
+    |---|---|---|---|---|
+    | `clamf` | 21 | 42 | 60 s | 43 min |
+    | `vanilla` | 26 | 47 | 31 s | 24 min |
+    | `claam` | 26 | 47 | 56 s | 45 min |
+    | `msfm` | 23 | 44 | 35 s | 26 min |
+    | `cam` | 52 | 73 | 30 s | 37 min |
+    | `laam` | 48 | 69 | 57 s | 66 min |
+
+    El modelo completo tarda 60 s por epoch, un 10 % más que los 0.9 min estimados. La máscara
+    lag-aware (LAAM) casi duplica el tiempo por epoch; el MSFM agrega poco. La grilla completa tomó
+    ~4 h 03 min, y el pod estuvo encendido ~4.6 h (~$3.40, contando el setup y el smoke test).
 - Justificación:
   - el paper entrena por región y ajusta, pero aquí las 508 cuencas comparten un solo split y no hay
     regiones: un modelo global aprovecha todas las ventanas y es el setup habitual para muchas
