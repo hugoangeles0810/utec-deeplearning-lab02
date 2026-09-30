@@ -199,6 +199,23 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   promedio de métricas por lead; no excluir cuencas (la media queda dominada por cuencas secas); NSE
   acotado `1/(2 − NSE)` (se aleja del paper).
 - Impacto: define cómo se leen todas las tablas de resultados y la comparación con el baseline.
+- Implementación (2026-09-30, agente): `src/clamf/evaluate.py`
+  (`uv run python -m clamf.evaluate --config <yaml> --run-id <id> [--split val|test] [--device ...]`).
+  - Evalúa el **mejor checkpoint** (`best.pt`) del run: lo toma de
+    `<train.checkpoint_dir>/<run id>/` o, si no está (por ejemplo, entrenado en el pod), del artifact
+    `checkpoints/best.pt` del run. Si el modelo, las longitudes de ventana o la normalización del YAML
+    no coinciden con las del entrenamiento, da error; rutas, tamaños de batch, precarga y `eval`
+    (umbrales) sí pueden cambiar. El run se busca por su id, en su propio experimento de MLflow.
+  - Predice con el mismo `amp` que la validación, des-normaliza predicción y target a mm/h con los
+    scalers de train y calcula las métricas de arriba.
+  - Registra todo **en el mismo run de MLflow** del entrenamiento, con el split como prefijo:
+    `val/<métrica>_{median,mean,n_excluded}` (con exclusión), `val_literal/...` (las 508 cuencas),
+    `val/lead/{nse,rmse}_{median,mean}` con la hora de anticipación como step, y
+    `val/checkpoint_epoch`, `val/n_basins`, `val/n_windows`. Artifacts en `eval/val/`:
+    `predictions.parquet` (una fila por ventana y hora: `row_id`, `basin_id`, `lead`, `obs`, `pred`),
+    `basin_metrics.csv` (con y sin exclusión) y `lead_metrics.csv`.
+  - `--split test` falla con `MissingFutureMeteoError` hasta que test tenga `y_aux` (D-013); cuando
+    llegue, se corre sobre los mismos runs y queda con el prefijo `test/`.
 - Fecha / autor: 2026-09-28 / equipo.
 - Registrada: 2026-09-25.
 
