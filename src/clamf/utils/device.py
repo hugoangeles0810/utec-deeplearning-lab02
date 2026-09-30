@@ -1,10 +1,12 @@
 """Device selection (AGENTS.md §4): ``auto`` picks cuda → mps → cpu; bf16 only on CUDA (D-004)."""
 
+import contextlib
 from typing import Literal
 
 import torch
 
 DeviceName = Literal["auto", "cuda", "mps", "cpu"]
+AmpName = Literal["bf16", "none"]
 
 
 def resolve_device(name: DeviceName = "auto") -> torch.device:
@@ -20,6 +22,14 @@ def resolve_device(name: DeviceName = "auto") -> torch.device:
     return torch.device(name)
 
 
-def effective_amp(amp: Literal["bf16", "none"], device: torch.device) -> Literal["bf16", "none"]:
+def effective_amp(amp: AmpName, device: torch.device) -> AmpName:
     """Mixed precision actually used: bf16 autocast only on CUDA; MPS and CPU run float32 (D-004)."""
     return "bf16" if amp == "bf16" and device.type == "cuda" else "none"
+
+
+def autocast(device: torch.device, amp: AmpName) -> contextlib.AbstractContextManager:
+    """Context for the forward pass: bf16 autocast when ``amp`` (already effective) is ``"bf16"``,
+    otherwise a no-op. Losses and metrics run outside it, in float32 (D-004)."""
+    if amp == "bf16":
+        return torch.autocast(device.type, dtype=torch.bfloat16)
+    return contextlib.nullcontext()

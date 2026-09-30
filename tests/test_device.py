@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from clamf.utils import device as device_mod
-from clamf.utils.device import effective_amp, resolve_device
+from clamf.utils.device import autocast, effective_amp, resolve_device
 
 
 def fake_availability(monkeypatch: pytest.MonkeyPatch, cuda: bool, mps: bool) -> None:
@@ -44,3 +44,12 @@ def test_unavailable_accelerator_raises(monkeypatch: pytest.MonkeyPatch, name: s
 )
 def test_bf16_only_on_cuda(amp: str, device: str, expected: str) -> None:
     assert effective_amp(amp, torch.device(device)) == expected
+
+
+def test_autocast_runs_bf16_only_when_enabled() -> None:
+    cpu = torch.device("cpu")
+    a, b = torch.randn(4, 4), torch.randn(4, 4)
+    with autocast(cpu, "bf16"):
+        assert (a @ b).dtype == torch.bfloat16
+    with autocast(cpu, "none"):
+        assert (a @ b).dtype == torch.float32
