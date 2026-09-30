@@ -29,6 +29,9 @@ Los datos vienen **limpios**: no hay NaN, infinitos ni centinelas en ningún spl
 
 - El encoder recibe `y_aux`, como en el paper (D-006, decisión del equipo). Es la única excepción a
   `metadata.json`.
+- Covariables conocidas en el horizonte: los 11 canales meteorológicos. El caudal del horizonte no se
+  conoce (ceros). `basin_id` no es entrada del modelo y no hay atributos estáticos ni variables de
+  calendario (D-006). Todos los modelos reciben las mismas entradas.
 - `y` **nunca** entra al modelo.
 - La predicción son las 48 últimas posiciones del decoder.
 
