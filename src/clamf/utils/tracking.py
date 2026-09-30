@@ -29,6 +29,13 @@ def start_run(cfg: Config, run_id: str | None = None) -> mlflow.ActiveRun:
     return mlflow.start_run(run_name=cfg.logging.run_name or None)
 
 
+def open_run(run_id: str) -> mlflow.ActiveRun:
+    """Reopen the existing run ``run_id`` in its own experiment, whatever ``logging.experiment``
+    says (e.g. to log its evaluation)."""
+    mlflow.set_experiment(experiment_id=mlflow.get_run(run_id).info.experiment_id)
+    return mlflow.start_run(run_id=run_id)
+
+
 def flatten_config(cfg: Config) -> dict[str, Any]:
     """Config as ``{"model.d_model": 64, ...}``; tuples become lists so they log as ``[1, 24]``."""
     flat: dict[str, Any] = {}

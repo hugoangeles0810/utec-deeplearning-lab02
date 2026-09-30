@@ -1,41 +1,16 @@
 import dataclasses
-import json
 from pathlib import Path
 
 import mlflow
 import pytest
 import torch
-import yaml
 from mlflow.tracking import MlflowClient
 
 import clamf.train as train_mod
-from clamf.config import Config, LoggingConfig, ModelConfig, TrainConfig, to_dict
-from clamf.data.prepare import prepare
+from clamf.config import Config
 from clamf.train import main, train
 from clamf.utils.checkpoint import BEST, LAST, run_checkpoint_dir
-from tests.synthetic import RawData
-
-
-@pytest.fixture
-def base_cfg(raw: RawData, cfg: Config, tracking: MlflowClient, tmp_path: Path) -> Config:
-    """Tiny model on the synthetic cache, CPU, logging to the ``unit-test`` experiment."""
-    prepare(cfg)
-    model = ModelConfig(
-        d_model=8, d_fusion=8, n_heads=2, d_ff=16, encoder_layers=1, decoder_layers=2,
-        msfm_scales=cfg.model.msfm_scales,
-    )  # fmt: skip
-    return dataclasses.replace(
-        cfg,
-        device="cpu",
-        model=model,
-        train=TrainConfig(lr=1e-2, max_epochs=3, checkpoint_dir=str(tmp_path / "ckpt")),
-        logging=LoggingConfig(experiment="unit-test"),
-    )
-
-
-def write_yaml(cfg: Config, path: Path) -> Path:
-    path.write_text(yaml.safe_dump(json.loads(json.dumps(to_dict(cfg)))))  # tuples -> lists
-    return path
+from tests.synthetic import write_yaml
 
 
 def history(client: MlflowClient, run_id: str, key: str) -> list[float]:

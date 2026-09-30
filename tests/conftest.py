@@ -9,7 +9,8 @@ import pytest
 from mlflow.tracking import MlflowClient
 
 from clamf.config import Config
-from tests.synthetic import RawData, make_config, make_raw
+from clamf.data.prepare import prepare
+from tests.synthetic import RawData, make_config, make_raw, tiny_training_config
 
 
 @pytest.fixture
@@ -34,3 +35,10 @@ def tracking(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Mlflow
     yield client
     if mlflow.active_run():
         mlflow.end_run()
+
+
+@pytest.fixture
+def base_cfg(raw: RawData, cfg: Config, tracking: MlflowClient, tmp_path: Path) -> Config:
+    """Tiny training setup on the prepared synthetic cache (see ``tiny_training_config``)."""
+    prepare(cfg)
+    return tiny_training_config(cfg, tmp_path)
