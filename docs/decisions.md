@@ -26,7 +26,7 @@ cada ambigüedad está en [`paper.md`](paper.md).
 | [D-007](#d-007--normalización-y-valores-faltantes) | P1 | Normalización y valores faltantes | D-002 | **DECIDIDA** |
 | [D-014](#d-014--hora-de-inicio-de-las-ventanas-y-re-muestreo-de-train) | P1 | Hora de inicio de las ventanas y re-muestreo de train | — | **DECIDIDA** |
 | [D-008](#d-008--detalles-de-freqmae) | P2 | Detalles de FreqMAE | D-003 | **DECIDIDA** |
-| [D-009](#d-009--red-que-predice-τ) | P2 | Red que predice τ | — | PENDIENTE |
+| [D-009](#d-009--red-que-predice-τ) | P2 | Red que predice τ | D-001 | **DECIDIDA** |
 | [D-010](#d-010--estructura-del-msfm) | P2 | Estructura del MSFM | D-005 | PENDIENTE |
 | [D-011](#d-011--posiciones-de-salida-de-la-predicción) | P2 | Posiciones de salida de la predicción | D-002 | **DECIDIDA** |
 | [D-015](#d-015--detalles-de-los-scalers-y-del-cache-de-datos) | P2 | Detalles de los scalers y del cache de datos | D-007 | **DECIDIDA** |
@@ -443,16 +443,57 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Registrada: 2026-09-25.
 
 ## D-009 · Red que predice τ
-- Estado: **PENDIENTE**
+- Estado: **DECIDIDA**
 - Prioridad: P2
-- Paper: Sec. 2.2.2, Eq. 2–4. Ver `paper.md` §4.4.
-- Pregunta abierta:
-  - qué es `P_i` en la Eq. 2 (lo más plausible: `i + 1`, es decir, media acumulada);
-  - ubicación de la conexión residual en la Eq. 4;
-  - `τ` por head o compartido;
-  - qué `K` se agrega (proyectada por head o salida del encoder sin proyectar).
-- Resuelto por D-001: `τ` es continuo y no se redondea (se usa directamente en la máscara suave), y su
-  inicialización arranca cerca de 0.
+- Paper: Sec. 2.2.2, Eq. 2–4 y Fig. 4(b) ("Causal lag aware network"). Ver `paper.md` §4.2 y §4.4. El
+  texto dice que las keys se suman y se normalizan "by positional encodings (P) to prevent excessive
+  magnitudes at later positions"; la figura muestra una suma acumulada de `K`, un bloque
+  "/ Positional Encoding", `Concat` con `Q` y `FC1 → (+ Z) → ReLU → LayerNorm → FC2 → Softplus → τ₁…τₙ`.
+  Ninguna ecuación lleva índice de head.
+- Decisión (criterio: lo más literal posible respecto al paper):
+  - **`P_i = i + 1`** (posición contada desde 1): `K̃_i = Σ_{j≤i} K_j / (i + 1 + ε)`, es decir, la media
+    acumulada. Se conserva el `ε` literal (`model.lag_eps`, default `1e-6`);
+  - **residual dentro del ReLU**, como la Eq. 4 y la Fig. 4(b):
+    `τ_i = Softplus(W₂ · LayerNorm(ReLU(W₁Z_i + b₁ + Z_i)) + b₂)`, con `W₁ ∈ ℝ^{2d×2d}`,
+    `LayerNorm(2d)` y `W₂ ∈ ℝ^{1×2d}`;
+  - **`τ` compartido entre heads**: un escalar por posición del decoder, y una sola máscara suave
+    (D-001) de shape `(B, 1, L_q, L_k)` que se aplica a todas las heads;
+  - **`Q` y `K` sin proyectar**: `Q` es el estado del decoder que entra al LAAM y `K` la salida del
+    encoder, ambos de `d_model`, así que `Z_i ∈ ℝ^{2·d_model}` (128 con el setup del paper). La red de
+    `τ` no comparte las proyecciones `W_Q`, `W_K` de la atención;
+  - **una red de `τ` por capa del decoder** (el LAAM está dentro del bloque "× N" de la Fig. 3);
+  - la agregación supone encoder y decoder alineados en el tiempo (misma longitud, 384 pasos; D-002):
+    la posición `i` del decoder agrega las keys `j ≤ i` del encoder;
+  - **inicialización**: init por defecto de PyTorch, salvo `b₂ = −4` (`model.lag_tau_init_bias`), que da
+    `τ ≈ Softplus(−4) ≈ 0.02` pasos al inicio (el "cerca de 0" de D-001). Es la única desviación del paper
+    en esta decisión;
+  - `τ` es continuo, en pasos de tiempo (horas en nuestro dataset), y no se redondea (D-001).
+- Justificación:
+  - `P_i = i + 1` es la única lectura de "positional encodings" que cumple el propósito que el paper
+    declara (que las magnitudes no crezcan con la posición). Un encoding sinusoidal no crece con `i` y
+    cruza por 0, y `P_i = i` (desde 0) haría explotar `K̃_0 = K_0 / ε`;
+  - la Fig. 4(b) confirma el residual de la Eq. 4 antes del ReLU, así que no es un error de paréntesis.
+    Es equivalente a `ReLU((W₁ + I)Z_i + b₁)`, pero se implementa tal cual;
+  - las Eq. 4–5 no llevan índice de head, `FC2` produce un escalar por posición y el paper describe la
+    máscara como la "standard masking technique", que en un Transformer es una sola máscara para todas
+    las heads. Además es más interpretable (un desfase por hora) y 4× más barato en memoria que un sesgo
+    por head;
+  - la Fig. 4(a) reproduce la multi-head attention de Vaswani, donde `Q, K, V` son las entradas antes de
+    los `Linear`; con un `τ` compartido, usar las keys proyectadas por head obligaría a elegir o
+    concatenar heads, algo que el paper no describe;
+  - con el init por defecto `τ ≈ Softplus(0) ≈ 0.69` pasos, y junto con `δ = 0.5` la posición `i` ya
+    vería parcialmente `i + 1` desde el inicio. `b₂ = −4` hace que el modelo arranque como atención
+    causal (D-001).
+- Alternativas consideradas:
+  - `P` como encoding sinusoidal o aprendido: descartada (división sin sentido, inestable);
+  - residual estándar `LayerNorm(ReLU(W₁Z + b₁) + Z)`: descartada por contradecir la Eq. 4 y la figura;
+  - `τ` por head, con las keys proyectadas por head (`d_k`): descartada, no aparece en el paper y
+    cuadruplica la memoria del sesgo;
+  - `Q`, `K` proyectados completos (`W_Q x`, `W_K m`): descartada, añade un acoplamiento que el paper no
+    menciona;
+  - una red de `τ` compartida entre capas: descartada, cada capa tiene su propio LAAM.
+- Fecha / autor: 2026-09-29 / equipo.
+- Depende de: D-001.
 - Registrada: 2026-09-25.
 
 ## D-010 · Estructura del MSFM

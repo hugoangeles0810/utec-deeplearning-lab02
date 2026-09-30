@@ -177,7 +177,7 @@ flowchart LR
     K["K<br/>(meteorología, encoder)"] --> AGG["1. Agregación de contenido<br/>suma acumulada de K<br/>normalizada por P_i"]
     Q["Q<br/>(caudal, decoder)"] --> CAT["Concat [Q_i ; K̃_i]"]
     AGG --> CAT
-    CAT --> MLP["2. Predicción del lag<br/>Linear → ReLU (+ residual)<br/>→ LayerNorm → Linear → Softplus"]
+    CAT --> MLP["2. Predicción del lag<br/>Linear (+ residual) → ReLU<br/>→ LayerNorm → Linear → Softplus"]
     MLP --> TAU["τ_i ≥ 0"]
     TAU --> MASK["3. Máscara dinámica<br/>visible si j ≤ i + τ_i"]
     MASK --> ATT["Cross-attention<br/>enmascarada"]
@@ -193,7 +193,8 @@ Z_i = \operatorname{Concat}\left(Q_i, \tilde{K}_i\right)
 $$
 
 donde $P_i$ es, según el paper, la "codificación posicional" de la posición $i$ y $\epsilon$ una constante
-pequeña de estabilidad numérica.
+pequeña de estabilidad numérica. En la Fig. 4(b) la agregación es una suma acumulada de $K$ seguida de un
+bloque "/ Positional Encoding".
 
 **Paso 2 — Predicción del lag (Eq. 4).** Un MLP con conexión residual y LayerNorm predice un desfase
 positivo para cada posición. La fórmula, tal como aparece en el PDF:
@@ -203,7 +204,8 @@ $$
 \qquad \tau_i \in \mathbb{R}^{+}
 $$
 
-Softplus es una aproximación suave de ReLU y garantiza $\tau_i > 0$.
+Softplus es una aproximación suave de ReLU y garantiza $\tau_i > 0$. La Fig. 4(b) muestra el mismo orden
+que la ecuación: `FC1 → (+ Z) → ReLU → LayerNorm → FC2 → Softplus`, con un escalar $\tau_i$ por posición.
 
 **Paso 3 — Máscara causal dinámica (Eq. 5).** La máscara causal permite $[0, i]$; la máscara lag-aware
 extiende la ventana a $[0, i + \tau_i]$:
@@ -234,19 +236,21 @@ Con el CLAAM, las matrices de atención:
 - **⚠️ Diferenciabilidad de la máscara.** Con una máscara binaria $j \le i + \tau_i$ la red que predice
   $\tau$ no recibe gradiente, así que no aprendería. El paper no dice cómo lo resuelve. **Resuelto en
   [`decisions.md`](decisions.md) D-001:** usamos una máscara suave diferenciable.
-- **Qué es $P_i$ en la Eq. 2.** Lo más plausible es $P_i = i + 1$ (número de elementos sumados), con lo que
-  $\tilde{K}_i$ sería la **media acumulada** de las keys. El texto habla de "positional encodings", pero
-  dividir un vector por un vector de encoding sinusoidal no tiene una interpretación clara.
-- **Paréntesis y residual en la Eq. 4.** El PDF pone el residual dentro del ReLU
-  ($\operatorname{ReLU}(W_1 Z_i + b_1 + Z_i)$). Lo habitual sería
-  $\operatorname{LayerNorm}(\operatorname{ReLU}(W_1 Z_i + b_1) + Z_i)$. En ambos casos $W_1$ debe ser
-  cuadrada ($2d_k \to 2d_k$) para que el residual cuadre, y $W_2$ proyecta a un escalar.
-- **$\tau$ por head o compartido:** si cada head de la multi-head attention predice su propio $\tau_i$ o hay
-  uno solo por posición.
+- **Qué es $P_i$ en la Eq. 2.** El texto habla de "positional encodings", pero dividir un vector por un
+  encoding sinusoidal no tiene una interpretación clara. **Resuelto en D-009:** $P_i = i + 1$, así que
+  $\tilde{K}_i$ es la **media acumulada** de las keys (la única lectura que cumple el propósito declarado de
+  que las magnitudes no crezcan con la posición).
+- **Paréntesis y residual en la Eq. 4.** El residual va dentro del ReLU
+  ($\operatorname{ReLU}(W_1 Z_i + b_1 + Z_i)$), no después como sería lo habitual. La Fig. 4(b) lo
+  confirma, así que no es una errata. **Resuelto en D-009:** se implementa literal; $W_1$ es cuadrada
+  ($2d \to 2d$) y $W_2$ proyecta a un escalar.
+- **$\tau$ por head o compartido.** Ni la Eq. 4 ni la Eq. 5 llevan índice de head. **Resuelto en D-009:**
+  un solo $\tau_i$ por posición, compartido entre heads, y una red de $\tau$ por capa del decoder.
 - **Unidades y redondeo de $\tau$:** se interpreta en pasos de tiempo (días), pero $\tau_i$ es continuo y el
   paper no dice si se redondea. Con la máscara suave de D-001 no hace falta redondearlo.
-- **Qué $K$ se usa:** si la agregación usa las keys ya proyectadas por head ($d_k$) o la salida del encoder
-  sin proyectar ($d_{model}$).
+- **Qué $Q$ y $K$ se usan:** si la red de $\tau$ usa las keys ya proyectadas por head ($d_k$) o la salida del
+  encoder sin proyectar ($d_{model}$). **Resuelto en D-009:** sin proyectar, como las entradas $Q, K$ de la
+  multi-head attention de la Fig. 4(a): el estado del decoder y la salida del encoder.
 
 ---
 
