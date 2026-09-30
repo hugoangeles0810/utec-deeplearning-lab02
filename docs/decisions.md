@@ -21,6 +21,7 @@ cada ambigüedad está en [`paper.md`](paper.md).
 | [D-003](#d-003--evaluación-del-horizonte-de-predicción) | P0 | Evaluación del horizonte de predicción | — | **DECIDIDA** |
 | [D-004](#d-004--estrategia-de-pre-entrenamiento-y-fine-tuning) | P0 | Pre-entrenamiento y fine-tuning | D-002 | **DECIDIDA** |
 | [D-013](#d-013--meteorología-futura-en-test) | P0 | Meteorología futura en test | D-006 | PENDIENTE (en espera del profesor, sin fecha límite) |
+| [D-018](#d-018--grilla-de-experimentos-sin-modelos-repetidos) | P0 | Grilla de experimentos sin modelos repetidos | D-004, D-017 | **DECIDIDA** |
 | [D-005](#d-005--causalidad-del-msfm) | P1 | Causalidad del MSFM | — | **DECIDIDA** |
 | [D-006](#d-006--covariables-conocidas-en-el-horizonte) | P1 | Covariables conocidas en el horizonte | D-002 | **DECIDIDA** (test en D-013) |
 | [D-007](#d-007--normalización-y-valores-faltantes) | P1 | Normalización y valores faltantes | D-002 | **DECIDIDA** |
@@ -231,8 +232,9 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   | **RTX 4090** | **256** | **sí** | **sí** | **0.9 min** | **4.2 GB** |
   | RTX 4090 | 512–1024 | sí | sí | 1.0 min | 8.4–16.7 GB |
 
-  Con 0.9 min por epoch, una corrida que llega al tope cuesta ~3 h; las ~7 corridas de la grilla
-  (CLAMF, ablaciones y baseline) suman como máximo ~21 h, unos **$7**, y menos con early stopping.
+  Con 0.9 min por epoch, una corrida que llega al tope cuesta ~3 h; las 6 corridas de la grilla
+  (CLAMF, ablaciones y baseline, D-018) suman como máximo ~18 h, unos **$6**, y menos con early
+  stopping.
   En la MacBook la misma grilla tomaría ~2.5 semanas.
 - **Ajustes obligatorios en el código** (sin ellos el 4090 es solo ~3.5× más rápido que la MacBook y el
   presupuesto no alcanza):
@@ -343,6 +345,43 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Alternativa: si el profesor dice que no, se pasa a la **opción b**. **No hay fecha límite**: se
   espera su respuesta (equipo, 2026-09-27).
 - Registrada: 2026-09-27.
+
+## D-018 · Grilla de experimentos sin modelos repetidos
+- Estado: **DECIDIDA**
+- Prioridad: P0
+- Paper: Sec. 4 y Tablas 5 y 6. Entre las dos ablaciones y el baseline hay 9 nombres, pero varios son el
+  mismo modelo: CLAMF-1 y CLAAM-1 (sin MSFM, sin CAM, sin LAAM) son el Transformer vanilla (D-017), y
+  CLAMF-3 es CLAAM (sin MSFM, con CAM y LAAM). Aun así, el paper reporta cifras distintas para CLAMF-1 y
+  CLAAM-1 (NSE mediano 0.791 frente a 0.789; `paper.md` §8.3).
+- Decisión:
+  - **un YAML por combinación distinta de flags**, nombrado por los módulos que activa, no por la fila
+    del paper: `vanilla`, `cam`, `laam`, `claam`, `msfm` y `clamf` en `configs/experiments/`
+    (6 runs en vez de 9). La tabla completa y el mapeo a las filas del paper están en
+    [`experiments.md`](experiments.md);
+  - las tablas leen cada fila del run correspondiente: la Tabla 5 usa `vanilla`, `msfm`, `claam` y
+    `clamf`; la Tabla 6, `vanilla`, `cam`, `laam` y `claam`; la comparación principal, `clamf` y
+    `vanilla`;
+  - los 6 runs van a **un solo experimento de MLflow, `clamf-grid`** (reemplaza la regla de un
+    experimento por estudio de AGENTS.md §6); cada run se llama como su YAML con el campo nuevo
+    `logging.run_name`, y queda un solo run por nombre;
+  - no se entrenan "MSFM + CAM" ni "MSFM + LAAM", que el paper no evalúa;
+  - `dev.yaml` (modelo completo, 2 epochs, experimento `dev`) queda fuera de la grilla, para corridas
+    de desarrollo;
+  - `tests/test_experiments.py` comprueba que cada YAML carga, que su `run_name` es el nombre del
+    archivo, que la grilla tiene exactamente estas 6 combinaciones sin repetir y que solo cambian los
+    flags y `logging` respecto de `base.yaml`.
+- Justificación:
+  - con la misma config, datos, seed y código, entrenar dos veces el mismo modelo solo agrega ruido de
+    no determinismo de la GPU: las tablas mostrarían el mismo modelo con números distintos, como le
+    pasa al paper;
+  - ahorra 3 corridas (~9 h y ~$3 en el 4090 como máximo, D-004);
+  - un nombre por modelo evita tener que decidir cuál de dos runs "iguales" va en cada tabla.
+- Alternativas consideradas: 9 YAML con un experimento de MLflow por estudio (la regla anterior de
+  AGENTS.md §6), que repite 3 entrenamientos; 6 runs con los nombres del paper y alias (más confuso
+  porque un run tendría dos nombres).
+- Fecha / autor: 2026-09-30 / equipo.
+- Depende de: D-004, D-017.
+- Registrada: 2026-09-30.
 
 ---
 
