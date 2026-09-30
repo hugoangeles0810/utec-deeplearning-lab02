@@ -30,6 +30,7 @@ model:  # paper Table 2
   dropout: 0.1
   msfm_scales: [1, 24, 96]  # hours (D-002); each must divide history + horizon
   msfm_conv_kernel: 3  # D-010
+  positional_encoding: sinusoidal  # D-012
   lag_temperature: 1.0  # D-001
   lag_margin: 0.5  # D-001
   lag_eps: 1.0e-6  # Eq. (2), D-009
@@ -38,10 +39,11 @@ model:  # paper Table 2
 
 train:  # paper Table 3, D-004
   optimizer: adam
-  lr: 0.001
+  lr: 0.001  # constant, no scheduler (D-012)
   loss: freqmae  # freqmae | mse | mae
   max_epochs: 200
   early_stopping_patience: 20
+  early_stopping_min_delta: 0.0  # D-012
   amp: bf16  # bf16 | none; CUDA only
 
 eval:  # D-003, mm/h
