@@ -45,6 +45,14 @@ Las tablas se generan a partir de los runs de MLflow (AGENTS.md §6): cada fila 
 Así las filas repetidas del paper (CLAMF-1 = CLAAM-1 y CLAMF-3 = CLAAM) muestran siempre los mismos
 números.
 
+[`notebooks/02_results.ipynb`](../notebooks/02_results.ipynb) arma estas tablas y las figuras de
+`reports/figures/` con `clamf.results` (`Grid.load`, `paper_table`) y `clamf.plots`, a partir del
+store bajado del pod (`results/runpod/mlflow.db`, o `MLFLOW_TRACKING_URI`). Además de las tablas,
+compara los modelos **cuenca por cuenca** (`paired_comparison`: mejora mediana y media, fracción de
+cuencas donde gana cada uno y test de Wilcoxon pareado), porque las diferencias de las medianas son
+de centésimas y hay un solo seed por modelo. El split es un parámetro del notebook (`SPLIT`): hoy val,
+provisional (D-003); cuando test tenga `y_aux` (D-013), se evalúa test y se vuelve a ejecutar.
+
 ## Cómo se lanzan
 
 Los 6 runs van al experimento de MLflow `clamf-grid` y cada uno se llama como su YAML. La grilla
