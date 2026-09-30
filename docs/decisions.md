@@ -644,6 +644,10 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   Fig. 3 sugiere el sinusoidal); escalar la entrada por `√d_model`; warmup de Vaswani o
   `ReduceLROnPlateau` (el paper no los menciona); weight decay o gradient clipping; `min_delta > 0`;
   descartar el último batch incompleto.
+- Implementación (2026-09-29, agente): `src/clamf/models/embedding.py`. `build_input_embedding`
+  arma `Dropout(Proyección(x) + PE)` con el MSFM o el `Linear` de D-010 según `use_msfm`, y
+  `max_len = history_hours + horizon_hours`. La tabla del encoding es un buffer fijo que no se guarda
+  en el checkpoint, porque se recalcula igual al cargar el modelo.
 - Fecha / autor: 2026-09-29 / equipo.
 - Depende de: D-004.
 - Registrada: 2026-09-25.
