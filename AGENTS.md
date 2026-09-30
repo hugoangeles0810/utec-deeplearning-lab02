@@ -28,6 +28,11 @@ Dentro del alcance:
    cross-attention estándar), entrenado con el mismo pipeline, datos y presupuesto que CLAMF-Former.
    Es `CLAMFFormer` con los tres flags en `false` (D-017), no un módulo aparte.
 
+Varias filas de las Tablas 5 y 6 son el mismo modelo (CLAMF-1 = CLAAM-1 = vanilla, CLAMF-3 = CLAAM), así
+que se entrena **un run por combinación distinta de flags**: 6 runs (`vanilla`, `cam`, `laam`, `claam`,
+`msfm`, `clamf`) que cubren las dos tablas y el baseline (D-018). Grilla, mapeo a las filas del paper y
+cómo se lanza: [`docs/experiments.md`](docs/experiments.md).
+
 Fuera del alcance salvo que el equipo lo pida: comparación de pérdidas (MAE/MSE/sjNSE), baselines
 LSTM-MSV-S2S / RR-Former / DTSW-transformer.
 
@@ -44,7 +49,7 @@ atención** (opcionalmente) para visualizarlos como en las Figs. 2 y 9.
 ├── pyproject.toml, uv.lock
 ├── configs/
 │   ├── base.yaml                  # defaults = setup del paper
-│   └── experiments/               # un YAML por experimento/ablación/baseline
+│   └── experiments/               # un YAML por combinación de flags (D-018) + dev.yaml
 ├── src/clamf/
 │   ├── config.py                  # dataclasses tipadas + carga/merge de YAML
 │   ├── data/                      # carga, preprocesamiento, ventanas, Dataset/DataLoader
@@ -66,6 +71,7 @@ atención** (opcionalmente) para visualizarlos como en las Figs. 2 y 9.
 └── docs/
     ├── paper.pdf
     ├── paper.md                   # resumen técnico del paper
+    ├── experiments.md             # grilla de experimentos y mapeo a las tablas del paper
     └── decisions.md               # registro de decisiones de implementación
 ```
 
@@ -118,14 +124,17 @@ presupuesto si el código incluye estos ajustes (detalle y mediciones en `docs/d
 
 - YAML en `configs/`, cargado a **dataclasses tipadas** en `clamf/config.py` (secciones sugeridas:
   `data`, `model`, `train`, `logging`). Un experimento = un YAML que sobreescribe `base.yaml`.
+- Los YAML de la grilla solo cambian los flags del modelo y `logging` (`experiment`, `run_name` = nombre
+  del archivo); todo lo demás sale de `base.yaml` (D-018, lo verifica `tests/test_experiments.py`).
 - `base.yaml` reproduce los defaults del paper (`docs/paper.md` §7). **Ningún hiperparámetro hardcodeado** en el código.
 - Validar la config al cargarla (claves desconocidas → error).
 
 ## 6. Tracking con MLflow
 
 - Tracking local (`mlruns/` o `sqlite:///mlflow.db`), configurable por variable de entorno `MLFLOW_TRACKING_URI`.
-- Un *experiment* de MLflow por estudio (p. ej. `clamf-main`, `ablation-clamf`, `ablation-claam`, `baseline`);
-  un *run* por entrenamiento.
+- Un solo *experiment* de MLflow, `clamf-grid`, para los 6 runs de la grilla, y `dev` para corridas de
+  desarrollo; un *run* por entrenamiento, llamado como su YAML (`logging.run_name`), y un solo run por
+  nombre en `clamf-grid` (D-018).
 - Registrar siempre: config completa aplanada como params, seed, device (y GPU), `amp`, git commit;
   loss train/val y tiempo por epoch; epoch del mejor checkpoint (D-004);
   métricas finales de test (mediana y media de cada métrica, con y sin cuencas excluidas, y cuántas se
