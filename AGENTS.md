@@ -26,6 +26,7 @@ Dentro del alcance:
    - `CLAAM-1`: sin CAM, sin LAAM · `CLAAM-2`: solo CAM · `CLAAM-3`: solo LAAM · `CLAAM`: ambos (todas sin MSFM).
 3. **Baseline: Transformer vanilla** (encoder–decoder estándar: self-attention del encoder no causal,
    cross-attention estándar), entrenado con el mismo pipeline, datos y presupuesto que CLAMF-Former.
+   Es `CLAMFFormer` con los tres flags en `false` (D-017), no un módulo aparte.
 
 Fuera del alcance salvo que el equipo lo pida: comparación de pérdidas (MAE/MSE/sjNSE), baselines
 LSTM-MSV-S2S / RR-Former / DTSW-transformer.
@@ -50,13 +51,14 @@ atención** (opcionalmente) para visualizarlos como en las Figs. 2 y 9.
 │   ├── models/
 │   │   ├── attention.py           # atención causal y lag-aware
 │   │   ├── msfm.py                # Multi-Scale Fusion Module
-│   │   ├── clamf_former.py        # modelo completo (componentes configurables)
-│   │   └── vanilla_transformer.py # baseline
+│   │   ├── embedding.py           # embedding de entrada (MSFM o Linear) + positional encoding
+│   │   ├── layers.py              # bloques del encoder (CAM) y del decoder (LAAM)
+│   │   └── clamf_former.py        # modelo completo; ablaciones y baseline vanilla por flags
 │   ├── losses.py                  # FreqMAE (+ MSE/MAE)
 │   ├── metrics.py                 # NSE, KGE, RMSE, TPE-2%, BIAS
 │   ├── train.py                   # entrypoint de entrenamiento
 │   ├── evaluate.py                # entrypoint de evaluación
-│   └── utils/                     # device, seeds, logging MLflow
+│   └── utils/                     # device, seeds, MLflow, checkpoints, early stopping
 ├── tests/                         # pytest
 ├── notebooks/                     # EDA, experimentos exploratorios, demos
 ├── data/                          # raw/ y processed/ (NO se versiona)
