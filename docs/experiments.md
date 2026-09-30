@@ -73,5 +73,5 @@ uv run python -m clamf.evaluate --config configs/experiments/clamf.yaml --run-id
 - La grilla se lanza en el RTX 4090 sin esperar a D-013 (equipo, 2026-09-30) y se reporta sobre val
   de forma provisional. Si D-013 termina en la opción b, se re-entrena toda la grilla.
 - En la Mac, los resultados bajados del pod se ven con
-  `MLFLOW_TRACKING_URI=sqlite:///results/runpod/mlflow.db uv run mlflow ui`, y las tablas se generan
+  `uv run mlflow ui --backend-store-uri sqlite:///results/runpod/mlflow.db`, y las tablas se generan
   desde ese store.

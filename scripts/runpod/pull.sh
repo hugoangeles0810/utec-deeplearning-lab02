@@ -3,7 +3,7 @@
 # artifact paths there (run it on the Mac; docs/runpod.md). Safe to run while the grid trains.
 #
 #   bash scripts/runpod/pull.sh root@<pod ip> <ssh port>
-#   MLFLOW_TRACKING_URI=sqlite:///results/runpod/mlflow.db uv run mlflow ui
+#   uv run mlflow ui --backend-store-uri sqlite:///results/runpod/mlflow.db
 set -euo pipefail
 if [ $# -lt 1 ]; then
   echo "usage: $0 <user@host> [ssh port]" >&2
@@ -30,4 +30,4 @@ echo "== relocate"
 cp "$OUT/mlflow.snapshot.db" "$OUT/mlflow.db"
 cd "$REPO"
 uv run python -m clamf.utils.mlflow_store relocate --db "$OUT/mlflow.db" --from "$REMOTE" --to "$OUT"
-echo "done: MLFLOW_TRACKING_URI=sqlite:///$OUT/mlflow.db uv run mlflow ui"
+echo "done: uv run mlflow ui --backend-store-uri sqlite:///$OUT/mlflow.db"

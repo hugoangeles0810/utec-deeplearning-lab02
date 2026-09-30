@@ -107,8 +107,12 @@ de MLflow) y evalúa lo que falte.
 ```bash
 bash scripts/runpod/pull.sh root@<ip> <puerto>
 # con una llave distinta de la default: SSH_OPTS="-i ~/.ssh/runpod" bash scripts/runpod/pull.sh ...
-MLFLOW_TRACKING_URI=sqlite:///results/runpod/mlflow.db uv run mlflow ui
+uv run mlflow ui --backend-store-uri sqlite:///results/runpod/mlflow.db
 ```
+
+`mlflow ui` no lee `MLFLOW_TRACKING_URI`: sin `--backend-store-uri` abre el `mlflow.db` local de
+desarrollo (experimentos `Default` y `dev`). Los scripts de Python (`clamf.evaluate`, notebooks) sí
+usan `MLFLOW_TRACKING_URI`.
 
 `pull.sh` hace tres cosas:
 
