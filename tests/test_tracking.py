@@ -86,13 +86,14 @@ def test_run_setup_logs_params_tags_and_config(tracking: MlflowClient, tmp_path:
 
 
 def test_start_run_resumes_an_existing_run(tracking: MlflowClient) -> None:
-    cfg = Config(logging=LoggingConfig(experiment="unit-test"))
+    cfg = Config(logging=LoggingConfig(experiment="unit-test", run_name="clamf"))
     with start_run(cfg) as run:
         log_epoch({"loss/val": 2.0}, epoch=0)
     with start_run(cfg, run_id=run.info.run_id) as resumed:
         log_epoch({"loss/val": 1.0}, epoch=1)
     assert resumed.info.run_id == run.info.run_id
     assert len(tracking.get_metric_history(run.info.run_id, "loss/val")) == 2
+    assert tracking.get_run(run.info.run_id).info.run_name == "clamf"
 
 
 def test_tau_summary_overall_and_per_layer() -> None:

@@ -1,7 +1,8 @@
 """MLflow tracking (AGENTS.md §6; D-001, D-004).
 
 The tracking URI comes from ``MLFLOW_TRACKING_URI`` (MLflow's default is ``sqlite:///mlflow.db``);
-the experiment is ``logging.experiment`` and every training run is one MLflow run. At the start of a
+the experiment is ``logging.experiment`` and every training run is one MLflow run, named
+``logging.run_name`` (D-018). At the start of a
 run :func:`log_run_setup` records the flattened config as params, the device, GPU and effective AMP,
 the git commit, and the YAML used; per-epoch values go through :func:`log_epoch`.
 """
@@ -20,9 +21,12 @@ _QUANTILE_MAX_ELEMENTS = 2**24  # torch.quantile input limit
 
 
 def start_run(cfg: Config, run_id: str | None = None) -> mlflow.ActiveRun:
-    """Start a run in ``logging.experiment``, or resume ``run_id`` (D-004: resumable training)."""
+    """Start a run named ``logging.run_name`` in ``logging.experiment``, or resume ``run_id``
+    (D-004: resumable training) keeping its name."""
     mlflow.set_experiment(cfg.logging.experiment)
-    return mlflow.start_run(run_id=run_id)
+    if run_id is not None:
+        return mlflow.start_run(run_id=run_id)
+    return mlflow.start_run(run_name=cfg.logging.run_name or None)
 
 
 def flatten_config(cfg: Config) -> dict[str, Any]:
