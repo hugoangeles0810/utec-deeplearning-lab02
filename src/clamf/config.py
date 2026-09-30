@@ -116,6 +116,7 @@ class TrainConfig:
     early_stopping_patience: int = 20  # epochs without val-loss improvement
     early_stopping_min_delta: float = 0.0  # improvement needed to reset patience; D-012
     amp: Literal["bf16", "none"] = "bf16"  # CUDA only; ignored on MPS/CPU (D-004)
+    checkpoint_dir: str = "checkpoints"  # <checkpoint_dir>/<mlflow run id>/{last,best}.pt
 
     def __post_init__(self) -> None:
         if self.lr <= 0:
@@ -125,6 +126,8 @@ class TrainConfig:
                 raise ConfigError(f"train.{name} must be > 0")
         if self.early_stopping_min_delta < 0:
             raise ConfigError("train.early_stopping_min_delta must be >= 0")
+        if not self.checkpoint_dir:
+            raise ConfigError("train.checkpoint_dir must not be empty")
 
 
 @dataclass(frozen=True)

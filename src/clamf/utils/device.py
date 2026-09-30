@@ -1,4 +1,4 @@
-"""Device selection (AGENTS.md §4): ``auto`` picks cuda → mps → cpu."""
+"""Device selection (AGENTS.md §4): ``auto`` picks cuda → mps → cpu; bf16 only on CUDA (D-004)."""
 
 from typing import Literal
 
@@ -18,3 +18,8 @@ def resolve_device(name: DeviceName = "auto") -> torch.device:
     if name != "cpu" and not available[name]:
         raise RuntimeError(f"device '{name}' was requested but is not available")
     return torch.device(name)
+
+
+def effective_amp(amp: Literal["bf16", "none"], device: torch.device) -> Literal["bf16", "none"]:
+    """Mixed precision actually used: bf16 autocast only on CUDA; MPS and CPU run float32 (D-004)."""
+    return "bf16" if amp == "bf16" and device.type == "cuda" else "none"
