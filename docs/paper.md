@@ -599,6 +599,10 @@ Además de los huecos de cada aporte (§4.4, §5 y §6), el paper no detalla:
   learning rate constante (la Tabla 3 no menciona scheduler).
 - **Qué es una mejora "significativa" en el early stopping** (Sec. 3.2). **Decidido en D-012:** cualquier
   mejora estricta de la pérdida de val (`min_delta = 0`).
+- **Estructura interna de los bloques:** la Fig. 3 dibuja "Add & Norm" tras cada subcapa, pero no da la
+  activación de la FFN, dónde va el dropout ni si la ablación de CAM toca la self-attention del decoder.
+  **Decidido en D-017:** post-norm sin LayerNorm final, FFN con ReLU y el decoder siempre causal
+  (`use_causal_encoder` solo afecta al encoder, como dice la Sec. 4.2).
 
 Cada uno se resuelve siguiendo la política de [`AGENTS.md`](../AGENTS.md): decidir la opción más razonable,
 implementarla y registrarla en [`decisions.md`](decisions.md).
