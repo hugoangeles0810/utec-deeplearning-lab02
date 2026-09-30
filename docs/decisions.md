@@ -30,6 +30,7 @@ cada ambigüedad está en [`paper.md`](paper.md).
 | [D-010](#d-010--estructura-del-msfm) | P2 | Estructura del MSFM | D-002, D-005 | **DECIDIDA** |
 | [D-011](#d-011--posiciones-de-salida-de-la-predicción) | P2 | Posiciones de salida de la predicción | D-002 | **DECIDIDA** |
 | [D-015](#d-015--detalles-de-los-scalers-y-del-cache-de-datos) | P2 | Detalles de los scalers y del cache de datos | D-007 | **DECIDIDA** |
+| [D-017](#d-017--estructura-de-los-bloques-del-encoder-y-del-decoder) | P2 | Estructura de los bloques del encoder y del decoder | D-009 | **DECIDIDA** |
 | [D-012](#d-012--positional-encoding-batch-size-scheduler-y-early-stopping) | P3 | Positional encoding, batch size, scheduler y early stopping | D-004 | **DECIDIDA** |
 | [D-016](#d-016--detalles-de-cálculo-de-las-métricas) | P3 | Detalles de cálculo de las métricas | D-003 | **DECIDIDA** |
 
@@ -609,6 +610,50 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Alternativas consideradas: cargar todo en RAM (~6 GB por proceso); leer el `.h5` por muestra
   (lento con acceso aleatorio); guardar el cache sin normalizar y normalizar en `__getitem__`.
 - Fecha / autor: 2026-09-28 / agente.
+
+## D-017 · Estructura de los bloques del encoder y del decoder
+- Estado: **DECIDIDA**
+- Prioridad: P2
+- Paper: Sec. 2.2.1 y Fig. 3. La figura dibuja cada capa del encoder como "Causal Attention → Add & Norm →
+  Feed Forward → Add & Norm" y cada capa del decoder como "Causal Attention → Add & Norm → Lag-Aware
+  Attention → Add & Norm → Feed Forward → Add & Norm", × N, con la salida del último encoder entrando al
+  LAAM de cada capa del decoder y un `Linear` final, sin normalización extra. El texto dice que se
+  reemplaza la self-attention "in both the encoder and decoder" por atención causal, y que la ablación
+  de la Tabla 6 se hace sobre "the causal attention mechanism (CAM) in the encoder" (Sec. 4.2); en
+  Sec. 2.1 aclara que la causalidad del decoder ya se impone con máscara en el Transformer clásico. La
+  Tabla 2 da `d_ff = 256`, pero no la activación de la FFN ni dónde va el dropout.
+- Decisión (`src/clamf/models/layers.py`):
+  - **post-norm** como en la Fig. 3 y en Vaswani et al. (2017): cada subcapa es
+    `LayerNorm(x + Dropout(Subcapa(x)))`, con una LayerNorm propia por subcapa y **sin LayerNorm final**
+    en las pilas;
+  - **FFN** `Linear(d_model → d_ff) → ReLU → Dropout → Linear(d_ff → d_model)`, la de Vaswani con el
+    dropout interno de `nn.TransformerEncoderLayer`; el dropout de la Tabla 2 (0.1) se usa en los pesos
+    de atención, en cada residual y en la FFN;
+  - **`use_causal_encoder` solo afecta al encoder**: la self-attention del decoder es **siempre
+    causal**, también en CLAAM-1, CLAAM-3, CLAMF-1 y el baseline vanilla;
+  - la **cross-attention** es el LAAM con `use_lag_aware_cross_attn` y, sin él, una multi-head
+    attention estándar **sin máscara** (el decoder ve toda la salida del encoder), como en el
+    Transformer clásico;
+  - el query del LAAM es la salida del primer Add & Norm del decoder, y la memoria (keys y values) es
+    la salida de la **última** capa del encoder, compartida por todas las capas del decoder;
+  - cada capa del decoder devuelve `τ` en todos los forwards (no solo cuando se piden los pesos),
+    para registrar su distribución en MLflow (D-001).
+- Justificación:
+  - la Fig. 3 es explícita en el orden "subcapa → Add & Norm", que es el post-norm del Transformer
+    original; ni la figura ni el texto muestran una normalización final;
+  - la Sec. 4.2 define la ablación de CAM "in the encoder", y el decoder ya es causal en un Transformer
+    clásico; quitar también la causalidad del decoder mezclaría dos cambios en la ablación. Con el
+    horizonte en ceros un decoder no causal no filtraría el target, pero dejaría de ser el Transformer
+    vanilla del baseline;
+  - ReLU y la posición del dropout son los defaults del Transformer que el paper toma como base.
+- Alternativas consideradas: pre-norm (entrena más estable en pilas profundas, pero contradice la
+  Fig. 3; con 4 capas el post-norm no da problemas); LayerNorm final en encoder y decoder (como hace
+  `nn.Transformer`); GELU en la FFN; que `use_causal_encoder: false` quite también la causalidad del
+  decoder; usar `nn.TransformerEncoderLayer`/`nn.TransformerDecoderLayer` (no admiten el LAAM ni
+  devuelven los pesos de atención).
+- Fecha / autor: 2026-09-29 / agente.
+- Depende de: D-009.
+- Registrada: 2026-09-29.
 
 ---
 
