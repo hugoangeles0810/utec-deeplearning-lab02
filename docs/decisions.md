@@ -262,6 +262,22 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
      caer o hay que apagarlo).
   6. **Registro en MLflow:** GPU y `amp` usados, tiempo por epoch, epoch del mejor checkpoint y
      epochs corridos.
+- Implementación de los puntos 5 y 6 (2026-09-29, agente):
+  - `src/clamf/utils/checkpoint.py`: cada run guarda sus checkpoints en
+    `<train.checkpoint_dir>/<run id de MLflow>/`. `last.pt` se reescribe al final de cada epoch con
+    modelo, optimizador, epoch, early stopping, los RNG de `random`, `numpy` y `torch` (CPU, CUDA y
+    MPS), el generador que baraja train y la config resuelta. `best.pt` guarda solo los pesos del
+    mejor epoch en val. Se escriben a un archivo temporal y se renombran, para que una caída del pod
+    en plena escritura no corrompa el checkpoint anterior. Se leen con `weights_only=True`.
+    Reanudar con otra config da error. Un test comprueba que 2 epochs + reanudar + 2 epochs da
+    exactamente los mismos pesos que 4 epochs seguidas;
+  - `src/clamf/utils/early_stopping.py`: estado del early stopping (D-012), serializable;
+  - `src/clamf/utils/tracking.py`: la URI sale de `MLFLOW_TRACKING_URI` (default de MLflow:
+    `sqlite:///mlflow.db`). Al empezar un run se registran como params la config aplanada
+    (`model.d_model`, …), `device`, `gpu`, `amp` efectivo (bf16 solo en CUDA) y la versión de
+    torch; como tags, `git_commit` y `git_dirty`; como artifacts, el YAML del experimento y la config
+    resuelta. `start_run(cfg, run_id)` reanuda un run existente. `tau_summary` resume `τ` (D-001)
+    con media, p50, p90 y máximo, en total y por capa del decoder.
 - Justificación:
   - el paper entrena por región y ajusta, pero aquí las 508 cuencas comparten un solo split y no hay
     regiones: un modelo global aprovecha todas las ventanas y es el setup habitual para muchas

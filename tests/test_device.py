@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from clamf.utils import device as device_mod
-from clamf.utils.device import resolve_device
+from clamf.utils.device import effective_amp, resolve_device
 
 
 def fake_availability(monkeypatch: pytest.MonkeyPatch, cuda: bool, mps: bool) -> None:
@@ -31,3 +31,16 @@ def test_unavailable_accelerator_raises(monkeypatch: pytest.MonkeyPatch, name: s
     fake_availability(monkeypatch, cuda=False, mps=False)
     with pytest.raises(RuntimeError, match=name):
         resolve_device(name)
+
+
+@pytest.mark.parametrize(
+    ("amp", "device", "expected"),
+    [
+        ("bf16", "cuda", "bf16"),
+        ("bf16", "mps", "none"),
+        ("bf16", "cpu", "none"),
+        ("none", "cuda", "none"),
+    ],
+)
+def test_bf16_only_on_cuda(amp: str, device: str, expected: str) -> None:
+    assert effective_amp(amp, torch.device(device)) == expected

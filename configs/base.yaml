@@ -45,6 +45,7 @@ train:  # paper Table 3, D-004
   early_stopping_patience: 20
   early_stopping_min_delta: 0.0  # D-012
   amp: bf16  # bf16 | none; CUDA only
+  checkpoint_dir: checkpoints  # <dir>/<mlflow run id>/{last,best}.pt (D-004)
 
 eval:  # D-003, mm/h
   min_obs_std: 0.001
