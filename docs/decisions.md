@@ -278,6 +278,23 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
     torch; como tags, `git_commit` y `git_dirty`; como artifacts, el YAML del experimento y la config
     resuelta. `start_run(cfg, run_id)` reanuda un run existente. `tau_summary` resume `τ` (D-001)
     con media, p50, p90 y máximo, en total y por capa del decoder.
+- Entrenamiento (2026-09-29, agente): `src/clamf/train.py`
+  (`uv run python -m clamf.train --config <yaml> [--resume <run id>] [--device ...]`).
+  - Cada epoch recorre train, luego val, actualiza el early stopping y guarda `best.pt` (si mejora)
+    y `last.pt`.
+  - El forward va dentro de `autocast` bf16 solo en CUDA (`clamf.utils.device.autocast`); la pérdida
+    se calcula fuera, en float32.
+  - Las pérdidas se acumulan en el dispositivo y se sincronizan una vez por epoch.
+  - Métricas por epoch en MLflow (step = epoch, en base 0): `loss/train`, `loss/val` (media
+    ponderada por muestra, en espacio normalizado), `time/epoch_s` y `τ` sobre todo val (`tau/…`).
+  - Al terminar se registran `best_epoch` (base 0), `epochs_run`, `best_val_loss`, el tag
+    `stopped_early`, `best.pt` como artifact y `scalers.json` (este último al inicio).
+  - `--resume` carga `last.pt` del run y sigue desde la epoch siguiente. No vuelve a registrar los
+    params, porque MLflow no deja cambiarlos (el device podría ser otro).
+  - `--device` sobreescribe `device` sin tocar la config, así un run se puede reanudar en otra
+    máquina.
+  - Un test comprueba que un run interrumpido tras la epoch 1 y reanudado da exactamente los mismos
+    pesos y las mismas pérdidas de val que el run sin interrupción.
 - Justificación:
   - el paper entrena por región y ajusta, pero aquí las 508 cuencas comparten un solo split y no hay
     regiones: un modelo global aprovecha todas las ventanas y es el setup habitual para muchas
