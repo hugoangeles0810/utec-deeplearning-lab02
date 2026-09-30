@@ -29,6 +29,7 @@ model:  # paper Table 2
   d_ff: 256
   dropout: 0.1
   msfm_scales: [1, 24, 96]  # hours (D-002); each must divide history + horizon
+  msfm_conv_kernel: 3  # D-010
   lag_temperature: 1.0  # D-001
   lag_margin: 0.5  # D-001
   lag_eps: 1.0e-6  # Eq. (2), D-009
