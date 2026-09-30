@@ -22,7 +22,7 @@ cada ambigüedad está en [`paper.md`](paper.md).
 | [D-004](#d-004--estrategia-de-pre-entrenamiento-y-fine-tuning) | P0 | Pre-entrenamiento y fine-tuning | D-002 | **DECIDIDA** |
 | [D-013](#d-013--meteorología-futura-en-test) | P0 | Meteorología futura en test | D-006 | PENDIENTE (en espera del profesor, sin fecha límite) |
 | [D-005](#d-005--causalidad-del-msfm) | P1 | Causalidad del MSFM | — | **DECIDIDA** |
-| [D-006](#d-006--covariables-conocidas-en-el-horizonte) | P1 | Covariables conocidas en el horizonte | D-002 | PENDIENTE |
+| [D-006](#d-006--covariables-conocidas-en-el-horizonte) | P1 | Covariables conocidas en el horizonte | D-002 | **DECIDIDA** (test en D-013) |
 | [D-007](#d-007--normalización-y-valores-faltantes) | P1 | Normalización y valores faltantes | D-002 | **DECIDIDA** |
 | [D-014](#d-014--hora-de-inicio-de-las-ventanas-y-re-muestreo-de-train) | P1 | Hora de inicio de las ventanas y re-muestreo de train | — | **DECIDIDA** |
 | [D-008](#d-008--detalles-de-freqmae) | P2 | Detalles de FreqMAE | D-003 | **DECIDIDA** |
@@ -346,17 +346,40 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Registrada: 2026-09-25.
 
 ## D-006 · Covariables conocidas en el horizonte
-- Estado: **PENDIENTE**
+- Estado: **DECIDIDA** (el caso de test se resuelve en D-013)
 - Prioridad: P1
-- Paper: Sec. 3.2. El encoder recibe la meteorología de los 103 días, incluidos los 7 días a predecir.
-- Pregunta abierta: ¿nuestro dataset tiene covariables disponibles para el horizonte de predicción
-  (observadas o pronosticadas)? Si no las tiene, hay que redefinir la entrada del encoder.
-- Nota (2026-09-26): el dataset **no** permite usar la meteorología futura como entrada (`y_aux` es solo
-  para supervisión), así que la entrada del encoder del paper (103 días incluyendo el horizonte) tiene que
+- Paper: Sec. 3.2 y Tabla 1. El encoder recibe la meteorología de los 103 días, incluidos los 7 días a
+  predecir; el decoder, el caudal de los 96 días conocidos y 7 días en ceros. Usa 0 atributos estáticos
+  de las cuencas.
+- Nota (2026-09-26): `metadata.json` marca `y_aux` (meteorología de las 48 h futuras) como
+  `future_supervision_only_not_inference_inputs`, así que la entrada del encoder del paper tenía que
   redefinirse.
-- Decisión del equipo (2026-09-27): **`y_aux` entra al encoder en train/val** (384 h: `X[..., :11]`
-  seguido de `y_aux`) para el LAAM del paper; es la única excepción a `metadata.json`. `y` se usa solo
-  como target. Queda pendiente qué hacer en test, donde falta `y_aux` (ver D-013).
+- Decisión:
+  - **`y_aux` entra al encoder en train y val** (equipo, 2026-09-27): `enc_x` son las 336 h de
+    `X[..., :11]` seguidas de las 48 h de `y_aux` (384 pasos), para reproducir el setup del paper y el
+    LAAM. Es la única excepción a `metadata.json`;
+  - **covariables conocidas en el horizonte: los 11 canales meteorológicos completos**, sin elegir un
+    subconjunto. El caudal del horizonte **no** se conoce: entra como ceros en el decoder (D-007) y `y` se
+    usa solo como target. El decoder recibe únicamente el caudal (`d = 1`);
+  - **sin atributos estáticos ni `basin_id` como entrada**: `basin_id` se usa solo para normalizar el
+    caudal (D-007) y para agregar las métricas por cuenca (D-003);
+  - **sin variables de calendario** (hora del día, día del año);
+  - **mismas entradas para todos los modelos**: CLAMF, las ablaciones y el Transformer vanilla reciben
+    las mismas `enc_x` y `dec_x`;
+  - **test** se decide en D-013: la consulta al profesor por el `y_aux` de test (opción a) incluye
+    usarlo como entrada. Si responde que `y_aux` no puede ser entrada, D-006 se reabre junto con D-013.
+- Justificación:
+  - usar la meteorología del horizonte es el setup del paper y la razón de ser del LAAM, que deja ver
+    meteorología en `i + τ_i`; no filtra el target porque el caudal futuro nunca entra;
+  - usar todos los canales evita una selección de variables que el paper no hace;
+  - el paper no usa atributos de cuenca y el dataset no trae ninguno; un embedding de `basin_id` haría
+    que el modelo memorice cada cuenca y se alejaría del paper;
+  - el dataset no trae fechas (D-002) y el paper no usa variables de calendario;
+  - con las mismas entradas, la comparación entre modelos mide la arquitectura y no los datos.
+- Alternativas consideradas: no usar `y_aux` como entrada (opción d de D-013, se aleja del paper y deja
+  al LAAM sin meteorología futura); un subconjunto de canales; embedding de `basin_id`; variables de
+  calendario.
+- Fecha / autor: 2026-09-29 / equipo (decisión de train/val del 2026-09-27).
 - Depende de: D-002.
 - Registrada: 2026-09-25.
 

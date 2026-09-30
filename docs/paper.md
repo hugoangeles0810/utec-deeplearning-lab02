@@ -441,6 +441,10 @@ donde $\lvert \cdot \rvert$ es el **módulo** de un número complejo.
 - **Decoder:** caudal de los 96 días conocidos + **7 días rellenos con ceros**.
 - **Salida:** caudal de los **7 días** siguientes.
 
+> **En nuestro dataset (D-002, D-006):** 384 h = 336 h de historia + 48 h a predecir. El encoder recibe
+> los 11 canales meteorológicos de las 384 h (las 48 futuras vienen de `y_aux`); el decoder, el caudal de
+> las 336 h y 48 ceros. Sin atributos estáticos ni variables de calendario.
+
 ### 7.3 Hiperparámetros del modelo (Tabla 2)
 
 | Hiperparámetro | Valor |
