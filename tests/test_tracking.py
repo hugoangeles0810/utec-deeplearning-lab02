@@ -19,17 +19,6 @@ from clamf.utils.tracking import (
 )
 
 
-@pytest.fixture
-def tracking(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> MlflowClient:
-    monkeypatch.setenv("MLFLOW_TRACKING_URI", f"sqlite:///{tmp_path / 'mlflow.db'}")
-    client = MlflowClient()
-    # artifacts under tmp_path too; set_experiment reuses this experiment by name
-    client.create_experiment("unit-test", artifact_location=(tmp_path / "artifacts").as_uri())
-    yield client
-    if mlflow.active_run():
-        mlflow.end_run()
-
-
 def test_flatten_config_uses_dotted_keys() -> None:
     flat = flatten_config(Config(model=ModelConfig(msfm_scales=(1, 24))))
     assert flat["seed"] == 2025
