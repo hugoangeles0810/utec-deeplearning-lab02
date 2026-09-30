@@ -71,6 +71,7 @@ def test_ablation_flags_and_scales_override(tmp_path: Path) -> None:
         ("data:\n  normalization:\n    discharge_std_floor: 0\n", "discharge_std_floor"),
         ("data: 3\n", "expected a mapping"),
         ("model:\n  n_heads: 3\n", "divisible"),
+        ("model:\n  d_fusion: 30\n", "d_fusion must be divisible"),
         ("model:\n  dropout: 1\n", "dropout"),
         ("model:\n  use_msfm: 1\n", "expected bool"),
         ("model:\n  msfm_scales: 24\n", "expected a list"),
