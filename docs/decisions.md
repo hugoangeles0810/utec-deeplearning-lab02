@@ -20,7 +20,7 @@ cada ambigüedad está en [`paper.md`](paper.md).
 | [D-001](#d-001--diferenciabilidad-de-la-máscara-lag-aware-eq-5) | P0 | Diferenciabilidad de la máscara lag-aware τ | — | **DECIDIDA** |
 | [D-003](#d-003--evaluación-del-horizonte-de-predicción) | P0 | Evaluación del horizonte de predicción | — | **DECIDIDA** |
 | [D-004](#d-004--estrategia-de-pre-entrenamiento-y-fine-tuning) | P0 | Pre-entrenamiento y fine-tuning | D-002 | **DECIDIDA** |
-| [D-013](#d-013--meteorología-futura-en-test) | P0 | Meteorología futura en test | D-006 | PENDIENTE (en espera del profesor, sin fecha límite) |
+| [D-013](#d-013--meteorología-futura-en-test) | P0 | Meteorología futura en test | D-006 | PENDIENTE (en espera del profesor; la grilla se lanza sobre val provisional) |
 | [D-018](#d-018--grilla-de-experimentos-sin-modelos-repetidos) | P0 | Grilla de experimentos sin modelos repetidos | D-004, D-017 | **DECIDIDA** |
 | [D-005](#d-005--causalidad-del-msfm) | P1 | Causalidad del MSFM | — | **DECIDIDA** |
 | [D-006](#d-006--covariables-conocidas-en-el-horizonte) | P1 | Covariables conocidas en el horizonte | D-002 | **DECIDIDA** (test en D-013) |
@@ -314,6 +314,26 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
     máquina.
   - Un test comprueba que un run interrumpido tras la epoch 1 y reanudado da exactamente los mismos
     pesos y las mismas pérdidas de val que el run sin interrupción.
+- Ejecución en RunPod (2026-09-30, agente; guía en [`runpod.md`](runpod.md)):
+  - `src/clamf/grid.py` (`uv run python -m clamf.grid [--configs ...]`) recorre la grilla en orden
+    `clamf`, `vanilla`, `claam`, `msfm`, `cam`, `laam`. Busca cada run por `logging.run_name`:
+    - si no existe, lo entrena;
+    - si quedó a medias (sin `epochs_run`), lo reanuda desde `last.pt`;
+    - si se cayó antes de su primer checkpoint, lo borra y lo vuelve a entrenar;
+    - al final, lo evalúa en val si aún no tiene métricas de val.
+
+    Relanzarlo tras una caída del pod retoma lo que falte. Da error si hay dos runs con el mismo
+    nombre (D-018).
+  - `scripts/runpod/` tiene tres scripts:
+    - `setup.sh`: prepara el pod (uv, `uv sync --frozen`, chequeo de CUDA, datos, cache, tests);
+    - `run_grid.sh`: corre `clamf.grid`, deja un snapshot del store de MLflow y detiene el pod;
+    - `pull.sh`: en la Mac, trae el store, `mlruns/`, checkpoints y logs a `results/runpod/`.
+  - MLflow guarda rutas absolutas de artifacts. `src/clamf/utils/mlflow_store.py` hace una copia
+    consistente del sqlite (`snapshot`, con el backup online de SQLite) y reescribe el prefijo de
+    `/workspace/...` a la ruta de la Mac (`relocate`). Así `clamf.evaluate` puede evaluar test en la
+    Mac bajando `best.pt` de los artifacts.
+  - `torch 2.14` del lockfile trae wheels de CUDA 13.0, así que el pod necesita un driver NVIDIA ≥ 580
+    (filtro CUDA 13.0 al crearlo).
 - Justificación:
   - el paper entrena por región y ajusta, pero aquí las 508 cuencas comparten un solo split y no hay
     regiones: un modelo global aprovecha todas las ventanas y es el setup habitual para muchas
@@ -354,8 +374,11 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   - el pipeline acepta `y_aux` de test como opcional: si `test.h5` lo trae, `clamf.data.prepare` lo
     cachea y el split de test queda disponible; sin él, el Dataset de test lanza un error explícito.
     La opción b **no se implementa** hasta que el profesor responda que no;
-  - solo corridas cortas de desarrollo. La grilla de ablaciones y el baseline se lanzan cuando haya
-    respuesta, porque la opción b obliga a re-entrenar todo.
+  - actualización (equipo, 2026-09-30): **la grilla se lanza ya** en RunPod (D-004, `docs/runpod.md`)
+    y se reporta sobre val de forma provisional. Si el profesor entrega el `y_aux` de test, se evalúa
+    test sobre los mismos runs. Si responde que no (opción b), se re-entrena toda la grilla, y el
+    equipo acepta ese costo (~18 h de GPU como máximo). Esto reemplaza el plan anterior de hacer solo
+    corridas cortas de desarrollo hasta tener respuesta.
 - Si el profesor entrega el `y_aux` de test, antes de usarlo se verifica:
   - que tenga shape `(27983, 48, 11)` y esté alineado por `Id` con `test.h5`;
   - que continúe a `X` sin salto, como pasa con `y_aux` en train/val.
