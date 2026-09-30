@@ -115,6 +115,7 @@ class TrainConfig:
     max_epochs: int = 200
     early_stopping_patience: int = 20  # epochs without val-loss improvement
     early_stopping_min_delta: float = 0.0  # improvement needed to reset patience; D-012
+    max_batches_per_epoch: int = 0  # 0: the whole train split; > 0 only for short dev runs
     amp: Literal["bf16", "none"] = "bf16"  # CUDA only; ignored on MPS/CPU (D-004)
     checkpoint_dir: str = "checkpoints"  # <checkpoint_dir>/<mlflow run id>/{last,best}.pt
 
@@ -126,6 +127,8 @@ class TrainConfig:
                 raise ConfigError(f"train.{name} must be > 0")
         if self.early_stopping_min_delta < 0:
             raise ConfigError("train.early_stopping_min_delta must be >= 0")
+        if self.max_batches_per_epoch < 0:
+            raise ConfigError("train.max_batches_per_epoch must be >= 0")
         if not self.checkpoint_dir:
             raise ConfigError("train.checkpoint_dir must not be empty")
 

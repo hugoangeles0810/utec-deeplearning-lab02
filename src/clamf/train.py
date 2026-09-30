@@ -10,6 +10,7 @@ its ``last.pt`` with the same YAML. Everything is logged to MLflow (AGENTS.md §
 """
 
 import argparse
+import itertools
 import logging
 import time
 from pathlib import Path
@@ -87,7 +88,15 @@ def train(
             if early_stopping.should_stop:  # also when resuming a run that already stopped
                 break
             start = time.perf_counter()
-            train_loss = train_epoch(model, loaders["train"], optimizer, loss_fn, device, amp)
+            train_loss = train_epoch(
+                model,
+                loaders["train"],
+                optimizer,
+                loss_fn,
+                device,
+                amp,
+                max_batches=cfg.train.max_batches_per_epoch,
+            )
             val_loss, tau = validate(model, loaders["val"], loss_fn, device, amp)
             seconds = time.perf_counter() - start
 
@@ -124,12 +133,14 @@ def train_epoch(
     loss_fn: LossFn,
     device: torch.device,
     amp: AmpName,
+    max_batches: int = 0,
 ) -> float:
-    """One pass over ``loader``; returns the sample-weighted mean training loss."""
+    """One pass over ``loader`` (only its first ``max_batches`` batches if > 0); returns the
+    sample-weighted mean training loss."""
     model.train()
     total = torch.zeros((), device=device)
     n = 0
-    for batch in loader:
+    for batch in itertools.islice(loader, max_batches or None):
         batch = batch_to_device(batch, device)
         optimizer.zero_grad(set_to_none=True)
         with autocast(device, amp):
