@@ -148,9 +148,13 @@ class EvalConfig:
 
 @dataclass(frozen=True)
 class LoggingConfig:
-    """MLflow settings; the tracking URI comes from ``MLFLOW_TRACKING_URI``."""
+    """MLflow settings; the tracking URI comes from ``MLFLOW_TRACKING_URI``.
+
+    ``run_name`` names the MLflow run (D-018); empty lets MLflow pick a random name.
+    """
 
     experiment: str = "dev"
+    run_name: str = ""
 
     def __post_init__(self) -> None:
         if not self.experiment:

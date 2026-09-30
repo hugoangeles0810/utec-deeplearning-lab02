@@ -54,3 +54,4 @@ eval:  # D-003, mm/h
 
 logging:
   experiment: dev  # MLflow experiment; tracking URI from MLFLOW_TRACKING_URI
+  run_name: ''  # MLflow run name (D-018); empty: random name
