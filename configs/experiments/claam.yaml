@@ -1,0 +1,9 @@
+# Full CLAAM (CAM + LAAM), no MSFM. Paper rows: CLAMF-3 (Table 5) and CLAAM (Table 6).
+# Grid of distinct component combinations (D-018); everything else comes from base.yaml.
+model:
+  use_msfm: false
+  use_causal_encoder: true  # CAM
+  use_lag_aware_cross_attn: true  # LAAM
+logging:
+  experiment: clamf-grid
+  run_name: claam

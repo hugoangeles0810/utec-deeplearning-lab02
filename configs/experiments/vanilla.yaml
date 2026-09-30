@@ -1,0 +1,9 @@
+# Transformer vanilla baseline. Paper rows: CLAMF-1 (Table 5), CLAAM-1 (Table 6) and the baseline.
+# Grid of distinct component combinations (D-018); everything else comes from base.yaml.
+model:
+  use_msfm: false
+  use_causal_encoder: false  # CAM
+  use_lag_aware_cross_attn: false  # LAAM
+logging:
+  experiment: clamf-grid
+  run_name: vanilla
