@@ -26,6 +26,11 @@ htmlcov/
 mlruns/
 mlartifacts/
 mlflow.db
+mlflow.snapshot.db
+
+# Grid logs (pod) and results pulled from RunPod (Mac)
+logs/
+results/
 
 # Checkpoints and heavy outputs
 checkpoints/
