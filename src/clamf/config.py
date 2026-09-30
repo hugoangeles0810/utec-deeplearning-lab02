@@ -75,6 +75,7 @@ class ModelConfig:
     dropout: float = 0.1
     msfm_scales: tuple[int, ...] = (1, 24, 96)  # hours; D-002
     msfm_conv_kernel: int = 3  # odd, symmetric zero padding; D-005, D-010
+    positional_encoding: Literal["sinusoidal"] = "sinusoidal"  # D-012
     lag_temperature: float = 1.0  # T of the soft lag-aware mask; D-001
     lag_margin: float = 0.5  # delta of the soft lag-aware mask; D-001
     lag_eps: float = 1e-6  # epsilon of the content aggregation, Eq. (2); D-009
@@ -111,6 +112,7 @@ class TrainConfig:
     loss: Literal["freqmae", "mse", "mae"] = "freqmae"
     max_epochs: int = 200
     early_stopping_patience: int = 20  # epochs without val-loss improvement
+    early_stopping_min_delta: float = 0.0  # improvement needed to reset patience; D-012
     amp: Literal["bf16", "none"] = "bf16"  # CUDA only; ignored on MPS/CPU (D-004)
 
     def __post_init__(self) -> None:
@@ -119,6 +121,8 @@ class TrainConfig:
         for name in ("max_epochs", "early_stopping_patience"):
             if getattr(self, name) <= 0:
                 raise ConfigError(f"train.{name} must be > 0")
+        if self.early_stopping_min_delta < 0:
+            raise ConfigError("train.early_stopping_min_delta must be >= 0")
 
 
 @dataclass(frozen=True)

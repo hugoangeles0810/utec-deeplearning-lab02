@@ -30,7 +30,7 @@ cada ambigüedad está en [`paper.md`](paper.md).
 | [D-010](#d-010--estructura-del-msfm) | P2 | Estructura del MSFM | D-002, D-005 | **DECIDIDA** |
 | [D-011](#d-011--posiciones-de-salida-de-la-predicción) | P2 | Posiciones de salida de la predicción | D-002 | **DECIDIDA** |
 | [D-015](#d-015--detalles-de-los-scalers-y-del-cache-de-datos) | P2 | Detalles de los scalers y del cache de datos | D-007 | **DECIDIDA** |
-| [D-012](#d-012--positional-encoding-batch-size-y-scheduler) | P3 | Positional encoding, batch size y scheduler | — | PENDIENTE |
+| [D-012](#d-012--positional-encoding-batch-size-scheduler-y-early-stopping) | P3 | Positional encoding, batch size, scheduler y early stopping | D-004 | **DECIDIDA** |
 | [D-016](#d-016--detalles-de-cálculo-de-las-métricas) | P3 | Detalles de cálculo de las métricas | D-003 | **DECIDIDA** |
 
 Otros pendientes (no técnicos): registrar la **fecha de entrega** de la presentación y el video.
@@ -587,12 +587,38 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 
 ## P3 · Defaults menores
 
-## D-012 · Positional encoding, batch size y scheduler
-- Estado: **PENDIENTE**
+## D-012 · Positional encoding, batch size, scheduler y early stopping
+- Estado: **DECIDIDA**
 - Prioridad: P3
-- Paper: no especifica ninguno de los tres.
-- Pregunta abierta: positional encoding sinusoidal o aprendido, tamaño de batch y si se usa un scheduler
-  para el learning rate.
+- Paper: Sec. 2.2.1 (la salida del MSFM se "combine with positional encodings"), Fig. 3 (el positional
+  encoding se dibuja con un ícono de onda senoidal y un "+" en el encoder y en el decoder), Tabla 3
+  (Adam, learning rate 0.001, sin scheduler, weight decay ni gradient clipping) y Sec. 3.2 (early stopping
+  cuando val "shows no significant improvement for 20 consecutive epochs", sin umbral). No da el batch.
+- Decisión:
+  - **positional encoding sinusoidal fijo** de Vaswani et al. (2017), que el paper cita: sin/cos con base
+    10000 y `max_len` = longitud de la secuencia (384). Se **suma** a la salida del MSFM, o a la del
+    `Linear` de entrada sin MSFM (D-010), **sin escalar por `√d_model`**, y después se aplica `dropout`.
+    El encoder y el decoder usan el mismo encoding, así que la hora `i` tiene el mismo código en ambos
+    (coherente con el LAAM, D-009). Flag `model.positional_encoding: sinusoidal` (única opción por ahora);
+  - **batch de 256**, ya decidido en D-004 (`data.batch_size`). El último batch incompleto de cada epoch
+    (48 ventanas) no se descarta (`drop_last=False`, como ya hace `DeviceLoader`);
+  - **sin scheduler**: learning rate constante de 0.001 (`train.lr`), Adam con los defaults de PyTorch
+    (`betas = (0.9, 0.999)`, `eps = 1e-8`), sin weight decay ni gradient clipping;
+  - **early stopping**: una epoch cuenta como mejora si la pérdida de val baja estrictamente más que
+    `train.early_stopping_min_delta` (default `0.0`, cualquier mejora); si no, suma 1 al contador de
+    paciencia (20, D-004). El mejor checkpoint es el de menor pérdida de val.
+- Justificación:
+  - el ícono senoidal de la Fig. 3 apunta al encoding fijo de Vaswani; la figura solo dibuja "+", sin
+    escalado; el dropout tras la suma es el del Transformer estándar, con la tasa de la Tabla 2;
+  - el batch ya está fijado por el presupuesto de cómputo (D-004);
+  - la Tabla 3 da un único learning rate y ningún otro ajuste del optimizador; es la lectura literal;
+  - `min_delta = 0` es el valor estándar cuando no se define qué es una mejora "significativa".
+- Alternativas consideradas: positional encoding aprendido (384 × 64 parámetros más por entrada, y la
+  Fig. 3 sugiere el sinusoidal); escalar la entrada por `√d_model`; warmup de Vaswani o
+  `ReduceLROnPlateau` (el paper no los menciona); weight decay o gradient clipping; `min_delta > 0`;
+  descartar el último batch incompleto.
+- Fecha / autor: 2026-09-29 / equipo.
+- Depende de: D-004.
 - Registrada: 2026-09-25.
 
 ## D-016 · Detalles de cálculo de las métricas

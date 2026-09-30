@@ -84,6 +84,8 @@ def test_ablation_flags_and_scales_override(tmp_path: Path) -> None:
         ("train:\n  loss: huber\n", "not in"),
         ("train:\n  amp: fp16\n", "not in"),
         ("train:\n  early_stopping_patience: 0\n", "early_stopping_patience"),
+        ("train:\n  early_stopping_min_delta: -0.1\n", "early_stopping_min_delta"),
+        ("model:\n  positional_encoding: learned\n", "not in"),
         ("eval:\n  tpe_top_fraction: 0\n", "tpe_top_fraction"),
         ("logging:\n  experiment: ''\n", "experiment"),
     ],

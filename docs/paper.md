@@ -580,7 +580,7 @@ modelo.
 Además de los huecos de cada aporte (§4.4, §5 y §6), el paper no detalla:
 
 - **Qué posiciones de la salida se usan como predicción:** lo natural son las 7 últimas posiciones del
-  decoder, proyectadas a 1 dimensión.
+  decoder, proyectadas a 1 dimensión. **Decidido en D-011:** las 48 últimas posiciones del decoder.
 - **Datos de pre-entrenamiento y de fine-tuning:** no dice si se pre-entrena con todas las cuencas y se
   ajusta por cuenca o por región. **Decidido en D-004:** un modelo global sin fine-tuning.
 - **Métricas con horizonte de 7 días:** no aclara si se evalúa cada día de anticipación por separado, solo
@@ -588,8 +588,13 @@ Además de los huecos de cada aporte (§4.4, §5 y §6), el paper no detalla:
   observado ≈ 0). **Decidido en D-003.**
 - **Normalización de los datos** (por cuenca, global, log-transform del caudal, etc.) ni **manejo de
   valores faltantes**.
-- **Tipo de positional encoding** (sinusoidal o aprendido).
-- **Batch size** y scheduler del learning rate (si lo hay).
+- **Tipo de positional encoding** (sinusoidal o aprendido). La Fig. 3 lo dibuja con un ícono de onda
+  senoidal. **Decidido en D-012:** sinusoidal fijo de Vaswani, sumado sin escalar y compartido entre
+  encoder y decoder.
+- **Batch size** y scheduler del learning rate (si lo hay). **Decidido en D-004 y D-012:** batch de 256 y
+  learning rate constante (la Tabla 3 no menciona scheduler).
+- **Qué es una mejora "significativa" en el early stopping** (Sec. 3.2). **Decidido en D-012:** cualquier
+  mejora estricta de la pérdida de val (`min_delta = 0`).
 
 Cada uno se resuelve siguiendo la política de [`AGENTS.md`](../AGENTS.md): decidir la opción más razonable,
 implementarla y registrarla en [`decisions.md`](decisions.md).
