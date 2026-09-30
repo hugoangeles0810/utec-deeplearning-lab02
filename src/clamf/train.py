@@ -20,7 +20,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from clamf.config import DEFAULT_BASE, Config, load_config, to_dict
-from clamf.data.dataset import Batch, DeviceLoader, build_dataloaders
+from clamf.data.dataset import DeviceLoader, batch_to_device, build_dataloaders, meteo_channels
 from clamf.data.prepare import SCALERS_FILE
 from clamf.losses import LossFn, get_loss
 from clamf.models.clamf_former import build_model
@@ -57,7 +57,7 @@ def train(
     amp = effective_amp(cfg.train.amp, device)
     seed_everything(cfg.seed)
     loaders = build_dataloaders(cfg, device)
-    model = build_model(cfg, n_meteo=_n_meteo(loaders["train"])).to(device)
+    model = build_model(cfg, n_meteo=meteo_channels(loaders["train"])).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.train.lr)  # Table 3, D-012
     loss_fn = get_loss(cfg.train.loss)
     early_stopping = EarlyStopping.from_config(cfg.train)
@@ -130,7 +130,7 @@ def train_epoch(
     total = torch.zeros((), device=device)
     n = 0
     for batch in loader:
-        batch = _to_device(batch, device)
+        batch = batch_to_device(batch, device)
         optimizer.zero_grad(set_to_none=True)
         with autocast(device, amp):
             pred = model(batch["enc_x"], batch["dec_x"]).pred
@@ -153,7 +153,7 @@ def validate(
     n = 0
     taus = []
     for batch in loader:
-        batch = _to_device(batch, device)
+        batch = batch_to_device(batch, device)
         with autocast(device, amp):
             out = model(batch["enc_x"], batch["dec_x"])
         total += loss_fn(out.pred, batch["target"]) * len(out.pred)
@@ -178,18 +178,6 @@ def _log_summary(early_stopping: EarlyStopping, epochs_run: int, best_path: Path
         mlflow.log_artifact(str(best_path), "checkpoints")
     else:
         log.warning("no val loss improved (NaN?); there is no best checkpoint")
-
-
-def _n_meteo(loader: Loader) -> int:
-    """Meteorological channels of ``enc_x`` (11 in the dataset, D-006)."""
-    if isinstance(loader, DeviceLoader):
-        return loader.tensors["enc_x"].shape[-1]
-    return loader.dataset[0]["enc_x"].shape[-1]
-
-
-def _to_device(batch: Batch, device: torch.device) -> Batch:
-    """No-op for preloaded batches (D-004); moves ``DataLoader`` batches otherwise."""
-    return {k: v.to(device, non_blocking=True) for k, v in batch.items()}
 
 
 def main(argv: list[str] | None = None) -> None:
