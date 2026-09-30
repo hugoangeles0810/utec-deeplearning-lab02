@@ -67,6 +67,8 @@ atención** (opcionalmente) para visualizarlos como en las Figs. 2 y 9.
 │   ├── train.py                   # entrypoint de entrenamiento
 │   ├── evaluate.py                # entrypoint de evaluación
 │   ├── grid.py                    # entrena/reanuda/evalúa la grilla de forma idempotente
+│   ├── results.py                 # lee la grilla de MLflow: tablas del paper y comparación por cuenca
+│   ├── plots.py                   # figuras de resultados (reports/figures/)
 │   └── utils/                     # device, seeds, MLflow (+ snapshot/relocate del store), checkpoints, early stopping
 ├── scripts/runpod/                # setup del pod, lanzar la grilla, bajar resultados (docs/runpod.md)
 ├── tests/                         # pytest
