@@ -27,7 +27,7 @@ cada ambigüedad está en [`paper.md`](paper.md).
 | [D-014](#d-014--hora-de-inicio-de-las-ventanas-y-re-muestreo-de-train) | P1 | Hora de inicio de las ventanas y re-muestreo de train | — | **DECIDIDA** |
 | [D-008](#d-008--detalles-de-freqmae) | P2 | Detalles de FreqMAE | D-003 | **DECIDIDA** |
 | [D-009](#d-009--red-que-predice-τ) | P2 | Red que predice τ | D-001 | **DECIDIDA** |
-| [D-010](#d-010--estructura-del-msfm) | P2 | Estructura del MSFM | D-005 | PENDIENTE |
+| [D-010](#d-010--estructura-del-msfm) | P2 | Estructura del MSFM | D-002, D-005 | **DECIDIDA** |
 | [D-011](#d-011--posiciones-de-salida-de-la-predicción) | P2 | Posiciones de salida de la predicción | D-002 | **DECIDIDA** |
 | [D-015](#d-015--detalles-de-los-scalers-y-del-cache-de-datos) | P2 | Detalles de los scalers y del cache de datos | D-007 | **DECIDIDA** |
 | [D-012](#d-012--positional-encoding-batch-size-y-scheduler) | P3 | Positional encoding, batch size y scheduler | — | PENDIENTE |
@@ -497,21 +497,56 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Registrada: 2026-09-25.
 
 ## D-010 · Estructura del MSFM
-- Estado: **PENDIENTE**
+- Estado: **DECIDIDA**
 - Prioridad: P2
-- Paper: Sec. 2.2.3, Eq. 6–12. Ver `paper.md` §5.
-- Pregunta abierta:
-  - kernel y stride del Conv1D y del MaxPool;
-  - qué hacer con `T = 103`, que no es divisible por 7 ni por 30;
-  - si las tres ramas, y el MSFM del encoder y el del decoder, comparten pesos;
-  - número de heads y si hay residual/LayerNorm en la cross-attention de fusión;
-  - dimensión de salida del Linear final;
-  - entrada de una sola variable en el decoder (`d = 1`).
-- Nota (2026-09-27): con datos horarios (384 pasos), las escalas 7/30 días del paper se adaptan a
-  `k = 1, 24, 96` (**decidido en D-002**, 2026-09-28).
-- Nota (2026-09-28): D-005 ya fija padding simétrico en el Conv1D, MaxPool con stride = k y fusión sin
-  máscara. Con `T = 384` y `k = 24, 96` la longitud es divisible, así que el MaxPool no necesita padding.
-- Depende de: D-005.
+- Paper: Sec. 2.2.3, Eq. 6–12, Fig. 5 y Fig. 3. Ver `paper.md` §5. El texto da
+  `ScaleExtraction_i = Conv1D(d_fusion) + GELU + MaxPool(k = i)` en "three parallel scale extraction
+  branches", la fusión `F̂ = CrossAttention(F_daily, F_coarse, F_coarse)` y
+  `Output = Linear(Concat[F_daily, F̂_weekly, F̂_monthly])`, sin kernel, padding, heads ni dimensiones.
+  La Fig. 5 dibuja un Conv1d distinto por rama, "MaxPool (kernel size = 1 / 7 / 30)", escalas gruesas más
+  cortas que `F_daily`, dos bloques "Multi-Head Attention" separados y ningún "Add & Norm" en la fusión.
+  La Fig. 3 dibuja un MSFM en el encoder y otro en el decoder, con el positional encoding sumado después.
+- Ya resuelto en otras decisiones: MaxPool con stride = `k` y fusión sin máscara (D-005); escalas
+  `k = 1, 24, 96` sobre 384 pasos, que dividen la longitud exacta y eliminan el problema de `T = 103`
+  (D-002).
+- Decisión (`model.*`):
+  - **Conv1D** `d → d_fusion` con **`kernel_size = 3`** (`msfm_conv_kernel`, impar) y padding
+    simétrico de **ceros** (`padding = 1`), de modo que la salida conserva la longitud `T`; después GELU y
+    `MaxPool1d(kernel_size=k)` (stride = `k`, el default de PyTorch; con `k = 1` es la identidad);
+  - **ningún peso compartido**: un Conv1D por rama, una atención de fusión por escala gruesa y un MSFM
+    propio en el encoder (`d = 11`) y otro en el decoder (`d = 1`, el caudal);
+  - **atención de fusión**: multi-head con `n_heads` (4), Q = `F_daily`, K = V = la escala gruesa, sin
+    máscara, **sin residual ni LayerNorm**, con `dropout` sobre los pesos de atención; usa el mismo módulo
+    de atención que el resto del modelo (SDPA fusionada y pesos opcionales, D-004);
+  - **sin positional encoding dentro del MSFM**: se suma después, como en la Fig. 3;
+  - **Linear final** `3·d_fusion → d_model`;
+  - **sin MSFM** (`use_msfm: false`, en CLAMF-1, CLAMF-3, todas las CLAAM-* y el baseline vanilla): cada
+    entrada pasa por un `Linear(d → d_model)`, el embedding estándar del Transformer.
+- Justificación:
+  - el kernel 3 es el tamaño habitual del embedding convolucional en Transformers para series de tiempo y
+    mezcla pasos vecinos; `kernel = 1` sería un Linear sin mezcla temporal. El padding de ceros es el
+    `same` de D-005; el circular haría que la hora 0 viera la hora 383;
+  - las ramas y las atenciones de fusión aparecen como bloques distintos en la Fig. 5, y el Conv1D del
+    encoder y el del decoder no pueden compartirse porque tienen distinto número de canales de entrada;
+  - la Fig. 5 no dibuja "Add & Norm" en la fusión, a diferencia de todas las demás atenciones de la
+    Fig. 3, y la Tabla 2 da un solo número de heads;
+  - el Linear final se suma al positional encoding, que tiene `d_model` (en el paper
+    `d_fusion = d_model = 64`);
+  - quitar el MSFM entero y reemplazarlo por la proyección mínima hace que la ablación mida el módulo
+    completo (Tabla 5).
+- Consecuencias:
+  - como no hay positional encoding antes de la fusión, la atención de fusión no sabe la posición de cada
+    paso: `F̂_i` depende del contenido de `F_daily,i`, no de su ubicación en la ventana;
+  - parte de la ganancia del MSFM en la ablación puede venir del Conv1D (mezcla local) y no solo de las
+    escalas gruesas, además de lo que ve hacia adelante (D-005).
+- Alternativas consideradas:
+  - `kernel = 1`, un kernel distinto por escala o padding circular;
+  - compartir pesos entre ramas o entre encoder y decoder;
+  - residual + LayerNorm o positional encoding dentro de la fusión;
+  - sin MSFM, conservar solo la rama horaria (Conv1D + GELU + Linear): descartada porque la ablación
+    mediría solo la parte multi-escala, no el módulo.
+- Fecha / autor: 2026-09-29 / equipo.
+- Depende de: D-002, D-005.
 - Registrada: 2026-09-25.
 
 ## D-011 · Posiciones de salida de la predicción

@@ -78,6 +78,7 @@ def test_ablation_flags_and_scales_override(tmp_path: Path) -> None:
         ("model:\n  msfm_scales: [24, 96]\n", "start at 1"),
         ("model:\n  msfm_scales: [1, 96, 24]\n", "increasing"),
         ("model:\n  msfm_scales: [1, 7]\n", "divide history"),
+        ("model:\n  msfm_conv_kernel: 2\n", "msfm_conv_kernel"),
         ("model:\n  lag_temperature: 0\n", "lag_temperature"),
         ("model:\n  lag_eps: 0.0\n", "lag_eps"),
         ("train:\n  loss: huber\n", "not in"),

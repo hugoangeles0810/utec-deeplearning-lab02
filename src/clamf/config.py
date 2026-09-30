@@ -74,6 +74,7 @@ class ModelConfig:
     d_ff: int = 256
     dropout: float = 0.1
     msfm_scales: tuple[int, ...] = (1, 24, 96)  # hours; D-002
+    msfm_conv_kernel: int = 3  # odd, symmetric zero padding; D-005, D-010
     lag_temperature: float = 1.0  # T of the soft lag-aware mask; D-001
     lag_margin: float = 0.5  # delta of the soft lag-aware mask; D-001
     lag_eps: float = 1e-6  # epsilon of the content aggregation, Eq. (2); D-009
@@ -91,6 +92,8 @@ class ModelConfig:
         scales = self.msfm_scales
         if not scales or scales[0] != 1 or any(b <= a for a, b in itertools.pairwise(scales)):
             raise ConfigError("model.msfm_scales must start at 1 and be strictly increasing")
+        if self.msfm_conv_kernel <= 0 or self.msfm_conv_kernel % 2 == 0:
+            raise ConfigError("model.msfm_conv_kernel must be a positive odd integer")
         if self.lag_temperature <= 0:
             raise ConfigError("model.lag_temperature must be > 0")
         if self.lag_margin < 0:

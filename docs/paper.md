@@ -299,6 +299,9 @@ $$
 Con $k = 1$ el MaxPool es la identidad y la serie conserva la resolución diaria. Con $k = 7$ y $k = 30$ la
 serie se acorta (≈ $T/7$ y $T/30$ pasos).
 
+La Fig. 5 dibuja un Conv1d distinto (otro color) en cada rama, seguido de GELU y
+"MaxPool (kernel size = 1 / 7 / 30)", con `F_weekly` y `F_monthly` más cortas que `F_daily`.
+
 **Fusión multi-escala (Eq. 10–12).** Las escalas gruesas se alinean a la resolución diaria con
 cross-attention, usando la escala diaria como query:
 
@@ -315,6 +318,10 @@ $$
 Todas las salidas tienen longitud $T$. El concat da $T \times 3d_{\text{fusion}}$ y el Linear lo proyecta a
 la dimensión del modelo. En el paper, $d_{\text{fusion}} = d_{\text{model}} = 64$.
 
+En la Fig. 5 la fusión son **dos bloques "Multi-Head Attention" separados** (Q = `F_daily`, K = V = la
+escala gruesa), **sin "Add & Norm"**, a diferencia de las atenciones de la Fig. 3. La Fig. 3 dibuja un MSFM
+en el encoder y otro en el decoder, y el positional encoding se suma **después** del MSFM.
+
 ### Lo que el paper no especifica
 
 - **⚠️ Causalidad del MSFM.** Un Conv1D con padding simétrico, un MaxPool de ventana 7 o 30 o una
@@ -322,15 +329,20 @@ la dimensión del modelo. En el paper, $d_{\text{fusion}} = d_{\text{model}} = 6
   causalidad** que el CLAAM impone después. Es especialmente delicado en el decoder, donde la entrada es
   el propio caudal. La Fig. 5 sugiere MaxPool con stride $= k$ y fusión sin máscara. **Decidido en
   D-005:** se implementa literal (no causal); no hay fuga del target porque el horizonte entra en ceros.
-- **Kernel size, stride y padding** de Conv1D y MaxPool (¿stride = $k$?, ¿qué pasa con $T = 103$ no
-  divisible por 7 ni por 30?).
+- **Kernel size, stride y padding** de Conv1D y MaxPool. **Resuelto en D-005 y D-010:** Conv1D con
+  kernel 3 y padding simétrico de ceros; MaxPool con stride $= k$. El problema de $T = 103$ (no divisible
+  por 7 ni por 30) desaparece con 384 pasos y $k = 24, 96$ (D-002).
 - **Pesos compartidos o no** entre las tres ramas y entre el MSFM del encoder y el del decoder.
+  **Resuelto en D-010:** no se comparte nada (la Fig. 5 dibuja bloques distintos).
 - **Configuración de la cross-attention de fusión:** número de heads, si lleva residual/LayerNorm, y si
-  usa máscara.
-- **Dimensión de salida del Linear**: se asume $d_{\text{model}}$, pero en el paper coincide con
-  $d_{\text{fusion}}$.
+  usa máscara. **Resuelto en D-005 y D-010:** 4 heads, sin residual ni LayerNorm, sin máscara y sin
+  positional encoding (se suma después del MSFM).
+- **Dimensión de salida del Linear**: en el paper coincide con $d_{\text{fusion}}$. **Resuelto en D-010:**
+  $3d_{\text{fusion}} \to d_{\text{model}}$.
 - **Decoder con una sola variable:** el decoder recibe solo el caudal ($d = 1$), así que el Conv1D pasa de 1
-  a 64 canales.
+  a 64 canales. No requiere tratamiento especial (D-010).
+- **Qué reemplaza al MSFM en las ablaciones "sin MSFM".** El paper no lo dice. **Resuelto en D-010:** un
+  `Linear(d → d_model)` por entrada, igual que en el Transformer vanilla.
 
 ---
 
