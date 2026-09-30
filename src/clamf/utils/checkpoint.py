@@ -84,9 +84,18 @@ def save_model(path: str | Path, model: nn.Module, epoch: int, config: dict[str,
     _atomic_save({"model": model.state_dict(), "epoch": epoch, "config": config}, Path(path))
 
 
-def load_model(path: str | Path, model: nn.Module) -> int:
-    """Load the weights of ``best.pt`` into ``model`` and return their epoch."""
+def load_model(path: str | Path, model: nn.Module, config: dict[str, Any] | None = None) -> int:
+    """Load the weights of ``best.pt`` into ``model`` and return their epoch.
+
+    ``config`` is a subset of the resolved config (e.g. ``{"model": {...}, "data":
+    {"history_hours": 336}}``); raises ``ValueError`` if any of its keys differs from the config
+    the checkpoint was written with. Keys left out are not checked.
+    """
     state = torch.load(path, map_location="cpu", weights_only=True)
+    if config is not None:
+        differ = _mismatches(config, state["config"])
+        if differ:
+            raise ValueError(f"{path} was written with a different config: {', '.join(differ)}")
     model.load_state_dict(state["model"])
     return state["epoch"]
 
@@ -138,3 +147,15 @@ def _atomic_save(obj: dict[str, Any], path: Path) -> None:
     tmp = path.with_name(path.name + ".tmp")
     torch.save(obj, tmp)
     os.replace(tmp, path)
+
+
+def _mismatches(expected: dict[str, Any], actual: dict[str, Any], prefix: str = "") -> list[str]:
+    """Dotted keys of ``expected`` whose value differs in ``actual`` (nested dicts as subsets)."""
+    out = []
+    for key, value in expected.items():
+        other = actual.get(key)
+        if isinstance(value, dict) and isinstance(other, dict):
+            out += _mismatches(value, other, f"{prefix}{key}.")
+        elif other != value:
+            out.append(prefix + key)
+    return out

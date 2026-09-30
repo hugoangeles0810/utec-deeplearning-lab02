@@ -149,6 +149,15 @@ def test_best_model_round_trip(tmp_path: Path) -> None:
         torch.testing.assert_close(a, b)
 
 
+def test_best_model_checks_only_the_given_config_keys(tmp_path: Path) -> None:
+    config = {"model": {"d": 1}, "data": {"hours": 4, "path": "a"}, "eval": {"x": 1}}
+    save_model(tmp_path / BEST, tiny_model(), epoch=0, config=config)
+    subset = {"model": {"d": 1}, "data": {"hours": 4}}  # data.path and eval are not checked
+    assert load_model(tmp_path / BEST, tiny_model(), subset) == 0
+    with pytest.raises(ValueError, match=r"different config: model\.d, data\.hours$"):
+        load_model(tmp_path / BEST, tiny_model(), {"model": {"d": 2}, "data": {"hours": 5}})
+
+
 def test_rng_state_round_trip() -> None:
     generator = torch.Generator().manual_seed(1)
     seed_everything(1)
