@@ -25,8 +25,11 @@ y son los mismos para todos (D-004).
   CAM, la self-attention del encoder no es causal (la del decoder siempre lo es, D-017); sin LAAM, la
   cross-attention es la estándar sin máscara.
 - No se entrenan "MSFM + CAM" ni "MSFM + LAAM": el paper no las evalúa y ninguna tabla las usa.
-- `dev.yaml` no es parte de la grilla: el modelo completo con 2 epochs, en el experimento `dev`, para
-  corridas cortas de desarrollo.
+- `dev.yaml` no es parte de la grilla: el modelo completo en el experimento `dev`, para corridas
+  cortas de desarrollo en la Mac. Hace 3 epochs de solo 50 batches de train cada una
+  (`train.max_batches_per_epoch`, ~5 % de train; val se recorre completo), así prueba el pipeline de
+  punta a punta (MLflow, checkpoints, `--resume`, `clamf.evaluate`) en pocos minutos. En la grilla
+  `max_batches_per_epoch` es `0` (epoch completa) y el test de la grilla verifica que no cambie.
 
 ## Cómo se arman las tablas
 
