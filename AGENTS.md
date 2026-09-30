@@ -63,15 +63,19 @@ atención** (opcionalmente) para visualizarlos como en las Figs. 2 y 9.
 │   ├── metrics.py                 # NSE, KGE, RMSE, TPE-2%, BIAS
 │   ├── train.py                   # entrypoint de entrenamiento
 │   ├── evaluate.py                # entrypoint de evaluación
-│   └── utils/                     # device, seeds, MLflow, checkpoints, early stopping
+│   ├── grid.py                    # entrena/reanuda/evalúa la grilla de forma idempotente
+│   └── utils/                     # device, seeds, MLflow (+ snapshot/relocate del store), checkpoints, early stopping
+├── scripts/runpod/                # setup del pod, lanzar la grilla, bajar resultados (docs/runpod.md)
 ├── tests/                         # pytest
 ├── notebooks/                     # EDA, experimentos exploratorios, demos
 ├── data/                          # raw/ y processed/ (NO se versiona)
+├── results/runpod/                # store de MLflow bajado del pod (NO se versiona)
 ├── reports/figures/               # figuras para presentación y video
 └── docs/
     ├── paper.pdf
     ├── paper.md                   # resumen técnico del paper
     ├── experiments.md             # grilla de experimentos y mapeo a las tablas del paper
+    ├── runpod.md                  # cómo correr la grilla en RunPod y bajar los resultados
     └── decisions.md               # registro de decisiones de implementación
 ```
 
@@ -93,8 +97,12 @@ uv run pytest                                                  # tests
 uv run ruff check . && uv run ruff format .                    # lint + formato
 uv run python -m clamf.train --config configs/experiments/clamf.yaml
 uv run python -m clamf.evaluate --config configs/experiments/clamf.yaml --run-id <mlflow_run_id>
+uv run python -m clamf.grid                                    # los 6 runs de la grilla (train + eval val)
 uv run mlflow ui                                               # ver experimentos
 ```
+
+La grilla se corre en RunPod con `scripts/runpod/{setup,run_grid}.sh` y se baja a la Mac con
+`scripts/runpod/pull.sh` (pasos en [`docs/runpod.md`](docs/runpod.md)).
 
 - Agrega dependencias con `uv add <paquete>` (o `uv add --dev` para herramientas); no edites el lockfile a mano.
 - Mantén las dependencias mínimas: `torch`, `numpy`, `pandas`, `pyyaml`, `mlflow`, `matplotlib`,

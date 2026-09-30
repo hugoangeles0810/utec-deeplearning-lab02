@@ -49,7 +49,13 @@ números.
 
 Los 6 runs van al experimento de MLflow `clamf-grid` y cada uno se llama como su YAML.
 
+La grilla completa se lanza en RunPod con `clamf.grid`, que entrena, reanuda y evalúa en val cada
+run según haga falta. Los pasos del pod y cómo bajar los resultados a la Mac están en
+[`runpod.md`](runpod.md).
+
 ```bash
+uv run python -m clamf.grid                                            # los 6 runs, en orden
+uv run python -m clamf.grid --configs configs/experiments/dev.yaml     # solo algunos YAML
 uv run python -m clamf.train --config configs/experiments/clamf.yaml
 uv run python -m clamf.train --config configs/experiments/clamf.yaml --resume <mlflow run id>
 uv run python -m clamf.train --config configs/experiments/dev.yaml     # prueba corta
@@ -64,5 +70,8 @@ uv run python -m clamf.evaluate --config configs/experiments/clamf.yaml --run-id
 - Un run caído se reanuda con `--resume` y el **mismo YAML**, sin lanzar uno nuevo (D-004).
 - Si una variante se vuelve a entrenar desde cero (por ejemplo, tras corregir un bug), el run anterior
   se borra o se renombra en MLflow para que quede **un solo run por `run_name`** en `clamf-grid`.
-- La grilla se lanza en el RTX 4090 cuando se resuelva D-013; mientras tanto solo corridas de
-  desarrollo.
+- La grilla se lanza en el RTX 4090 sin esperar a D-013 (equipo, 2026-09-30) y se reporta sobre val
+  de forma provisional. Si D-013 termina en la opción b, se re-entrena toda la grilla.
+- En la Mac, los resultados bajados del pod se ven con
+  `MLFLOW_TRACKING_URI=sqlite:///results/runpod/mlflow.db uv run mlflow ui`, y las tablas se generan
+  desde ese store.
