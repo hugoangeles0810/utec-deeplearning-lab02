@@ -44,6 +44,7 @@ train:  # paper Table 3, D-004
   max_epochs: 200
   early_stopping_patience: 20
   early_stopping_min_delta: 0.0  # D-012
+  max_batches_per_epoch: 0  # 0 = whole train split; > 0 only for short dev runs
   amp: bf16  # bf16 | none; CUDA only
   checkpoint_dir: checkpoints  # <dir>/<mlflow run id>/{last,best}.pt (D-004)
 

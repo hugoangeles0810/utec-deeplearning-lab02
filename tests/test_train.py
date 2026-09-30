@@ -63,6 +63,20 @@ def test_training_reduces_the_loss(
     assert losses[-1] < losses[0]
 
 
+def test_max_batches_per_epoch_limits_the_training_steps(
+    base_cfg: Config, tracking: MlflowClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    train_cfg = dataclasses.replace(base_cfg.train, max_epochs=2, max_batches_per_epoch=2)
+    cfg = dataclasses.replace(base_cfg, train=train_cfg)
+    steps = []
+    monkeypatch.setattr(train_mod, "validate", lambda *_: (1.0, None))
+    monkeypatch.setattr(
+        train_mod, "batch_to_device", lambda batch, _: steps.append(len(batch["target"])) or batch
+    )
+    train(cfg, write_yaml(cfg, tmp_path / "exp.yaml"))
+    assert steps == [cfg.data.batch_size] * 4  # 2 of the 5 train batches per epoch
+
+
 def test_without_laam_there_is_no_tau(
     base_cfg: Config, tracking: MlflowClient, tmp_path: Path
 ) -> None:
