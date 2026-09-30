@@ -584,6 +584,13 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Pregunta abierta: lo natural son las 7 últimas posiciones del decoder, proyectadas a 1 dimensión.
 - Decisión: las **48 últimas posiciones** del decoder (las del horizonte, que entran en ceros),
   proyectadas a 1 dimensión con una capa lineal (decidido en D-002).
+- Implementación (2026-09-29, agente): `src/clamf/models/clamf_former.py` (`CLAMFFormer` y
+  `build_model`). El `Linear(d_model → 1)` se aplica a las `horizon_hours` últimas posiciones de la
+  salida del decoder y da `(B, H)` en el espacio normalizado por cuenca. El modelo **reemplaza por
+  ceros** las `H` últimas posiciones de `dec_x` antes del embedding, aunque el Dataset ya las entrega
+  en cero: así, ni con el MSFM no causal (D-005) la predicción puede depender de un valor puesto por
+  error en el horizonte. Con el setup del paper, el modelo completo tiene ~633 k parámetros y la
+  variante sin MSFM, CAM ni LAAM ~468 k.
 - Fecha / autor: 2026-09-28 / equipo.
 - Depende de: D-002.
 - Registrada: 2026-09-25.
