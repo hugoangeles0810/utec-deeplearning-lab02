@@ -1,5 +1,6 @@
 """Tiny synthetic Rainfall-Runoff dataset with the same layout as the real files."""
 
+import dataclasses
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -7,8 +8,9 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pandas as pd
+import yaml
 
-from clamf.config import Config, DataConfig, ModelConfig
+from clamf.config import Config, DataConfig, LoggingConfig, ModelConfig, TrainConfig, to_dict
 
 HIST, HOR, N_CH, TARGET = 24, 6, 12, 11
 N_TRAIN, N_VAL, N_TEST, N_BASINS = 40, 12, 10, 4
@@ -98,3 +100,23 @@ def make_config(tmp_path: Path, **data: object) -> Config:
     }
     # Scales that divide HIST + HOR = 30, since the paper-adapted 24/96 do not.
     return Config(data=DataConfig(**(fields | data)), model=ModelConfig(msfm_scales=(1, 5, 15)))
+
+
+def tiny_training_config(cfg: Config, tmp_path: Path) -> Config:
+    """Tiny model on the synthetic cache, CPU, logging to the ``unit-test`` experiment."""
+    model = ModelConfig(
+        d_model=8, d_fusion=8, n_heads=2, d_ff=16, encoder_layers=1, decoder_layers=2,
+        msfm_scales=cfg.model.msfm_scales,
+    )  # fmt: skip
+    return dataclasses.replace(
+        cfg,
+        device="cpu",
+        model=model,
+        train=TrainConfig(lr=1e-2, max_epochs=3, checkpoint_dir=str(tmp_path / "ckpt")),
+        logging=LoggingConfig(experiment="unit-test"),
+    )
+
+
+def write_yaml(cfg: Config, path: Path) -> Path:
+    path.write_text(yaml.safe_dump(json.loads(json.dumps(to_dict(cfg)))))  # tuples -> lists
+    return path
