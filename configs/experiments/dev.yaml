@@ -1,6 +1,8 @@
-# Short development run of the full model (not part of the grid, D-018).
+# Short development run of the full model (not part of the grid, D-018): a few minutes on the Mac.
+# 50 batches of 256 per epoch (~5 % of train); val and evaluation use the whole val split.
 train:
-  max_epochs: 2
+  max_epochs: 3
+  max_batches_per_epoch: 50
 logging:
   experiment: dev
   run_name: dev
