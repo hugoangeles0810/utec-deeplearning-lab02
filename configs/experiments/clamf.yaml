@@ -1,0 +1,9 @@
+# Full CLAMF-Former. Paper rows: CLAMF (Table 5); compared with vanilla as the main result.
+# Grid of distinct component combinations (D-018); everything else comes from base.yaml.
+model:
+  use_msfm: true
+  use_causal_encoder: true  # CAM
+  use_lag_aware_cross_attn: true  # LAAM
+logging:
+  experiment: clamf-grid
+  run_name: clamf

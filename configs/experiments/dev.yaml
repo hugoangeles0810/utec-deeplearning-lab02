@@ -1,0 +1,6 @@
+# Short development run of the full model (not part of the grid, D-018).
+train:
+  max_epochs: 2
+logging:
+  experiment: dev
+  run_name: dev

@@ -1,0 +1,9 @@
+# Lag-aware cross-attention only. Paper rows: CLAAM-3 (Table 6).
+# Grid of distinct component combinations (D-018); everything else comes from base.yaml.
+model:
+  use_msfm: false
+  use_causal_encoder: false  # CAM
+  use_lag_aware_cross_attn: true  # LAAM
+logging:
+  experiment: clamf-grid
+  run_name: laam
