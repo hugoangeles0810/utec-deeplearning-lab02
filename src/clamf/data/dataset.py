@@ -157,27 +157,49 @@ def build_dataloaders(
     CPU and the caller moves them.
     """
     manifest = verify_cache(cfg)
+    return {
+        split: build_loader(cfg, split, device, verify=False)
+        for split in SPLITS
+        if manifest["splits"][split]["has_y_aux"]
+    }
+
+
+def build_loader(
+    cfg: Config, split: str, device: torch.device | str, verify: bool = True
+) -> DeviceLoader | DataLoader:
+    """Loader for one split, as in :func:`build_dataloaders`; only train is shuffled.
+
+    Raises :class:`MissingFutureMeteoError` for a split without ``y_aux`` (D-013).
+    """
+    if verify:
+        verify_cache(cfg)
     d = cfg.data
-    loaders: dict[str, DeviceLoader | DataLoader] = {}
-    for split in SPLITS:
-        if not manifest["splits"][split]["has_y_aux"]:
-            continue
-        dataset = RainfallRunoffDataset(d.processed_dir, split, d.history_hours, d.horizon_hours)
-        train = split == "train"
-        batch_size = d.batch_size if train else d.eval_batch_size
-        generator = torch.Generator().manual_seed(cfg.seed) if train else None
-        if d.preload_to_device:
-            tensors = dataset.load_all(device)
-            loaders[split] = DeviceLoader(tensors, batch_size, shuffle=train, generator=generator)
-            continue
-        loaders[split] = DataLoader(
-            dataset,
-            batch_size=batch_size,
-            shuffle=train,
-            generator=generator,
-            num_workers=d.num_workers,
-            worker_init_fn=seed_worker,
-            persistent_workers=d.num_workers > 0,
-            pin_memory=torch.cuda.is_available(),
-        )
-    return loaders
+    dataset = RainfallRunoffDataset(d.processed_dir, split, d.history_hours, d.horizon_hours)
+    train = split == "train"
+    batch_size = d.batch_size if train else d.eval_batch_size
+    generator = torch.Generator().manual_seed(cfg.seed) if train else None
+    if d.preload_to_device:
+        tensors = dataset.load_all(device)
+        return DeviceLoader(tensors, batch_size, shuffle=train, generator=generator)
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=train,
+        generator=generator,
+        num_workers=d.num_workers,
+        worker_init_fn=seed_worker,
+        persistent_workers=d.num_workers > 0,
+        pin_memory=torch.cuda.is_available(),
+    )
+
+
+def meteo_channels(loader: DeviceLoader | DataLoader) -> int:
+    """Meteorological channels of ``enc_x`` (11 in the dataset, D-006)."""
+    if isinstance(loader, DeviceLoader):
+        return loader.tensors["enc_x"].shape[-1]
+    return loader.dataset[0]["enc_x"].shape[-1]
+
+
+def batch_to_device(batch: Batch, device: torch.device) -> Batch:
+    """No-op for preloaded batches (D-004); moves ``DataLoader`` batches otherwise."""
+    return {k: v.to(device, non_blocking=True) for k, v in batch.items()}
