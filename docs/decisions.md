@@ -568,6 +568,10 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   - residual + LayerNorm o positional encoding dentro de la fusión;
   - sin MSFM, conservar solo la rama horaria (Conv1D + GELU + Linear): descartada porque la ablación
     mediría solo la parte multi-escala, no el módulo.
+- Implementación (2026-09-29, agente): `src/clamf/models/msfm.py` (`ScaleExtraction` y `MSFM`). El
+  Linear final toma `len(msfm_scales) · d_fusion` entradas (3 con la config base), así que otras
+  escalas se prueban solo desde el YAML; la config exige que `d_fusion` sea divisible por `n_heads`.
+  Con `need_weights` devuelve los pesos de fusión por escala gruesa, `(B, n_heads, T, T / k)`.
 - Fecha / autor: 2026-09-29 / equipo.
 - Depende de: D-002, D-005.
 - Registrada: 2026-09-25.

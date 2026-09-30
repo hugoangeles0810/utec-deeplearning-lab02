@@ -88,6 +88,8 @@ class ModelConfig:
                 raise ConfigError(f"model.{name} must be > 0")
         if self.d_model % self.n_heads:
             raise ConfigError("model.d_model must be divisible by model.n_heads")
+        if self.d_fusion % self.n_heads:
+            raise ConfigError("model.d_fusion must be divisible by model.n_heads")  # MSFM fusion
         if not 0 <= self.dropout < 1:
             raise ConfigError("model.dropout must be in [0, 1)")
         scales = self.msfm_scales
