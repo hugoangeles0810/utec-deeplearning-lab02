@@ -246,8 +246,9 @@ Con el CLAAM, las matrices de atención:
   ($2d \to 2d$) y $W_2$ proyecta a un escalar.
 - **$\tau$ por head o compartido.** Ni la Eq. 4 ni la Eq. 5 llevan índice de head. **Resuelto en D-009:**
   un solo $\tau_i$ por posición, compartido entre heads, y una red de $\tau$ por capa del decoder.
-- **Unidades y redondeo de $\tau$:** se interpreta en pasos de tiempo (días), pero $\tau_i$ es continuo y el
-  paper no dice si se redondea. Con la máscara suave de D-001 no hace falta redondearlo.
+- **Unidades y redondeo de $\tau$:** se interpreta en pasos de tiempo (días en el paper, horas en nuestro
+  dataset), pero $\tau_i$ es continuo y el paper no dice si se redondea. Con la máscara suave de D-001 no
+  hace falta redondearlo.
 - **Qué $Q$ y $K$ se usan:** si la red de $\tau$ usa las keys ya proyectadas por head ($d_k$) o la salida del
   encoder sin proyectar ($d_{model}$). **Resuelto en D-009:** sin proyectar, como las entradas $Q, K$ de la
   multi-head attention de la Fig. 4(a): el estado del decoder y la salida del encoder.
@@ -392,7 +393,6 @@ donde $\lvert \cdot \rvert$ es el **módulo** de un número complejo.
 ### Lo que el paper no especifica
 
 - **Sobre qué tramo se calcula:** solo los 7 días predichos o toda la secuencia de salida del decoder.
-  Lo razonable es solo el horizonte de 7 días.
 - **`fft` vs `rfft`:** para señales reales el espectro es simétrico. Usar `torch.fft.rfft` evita contar
   dos veces cada frecuencia, pero cambia la escala de la pérdida.
 - **Valor de $N$** (¿igual a la longitud de la secuencia o con zero-padding?) y **normalización** de la
@@ -400,6 +400,9 @@ donde $\lvert \cdot \rvert$ es el **módulo** de un número complejo.
 - **Reducción:** la Eq. 15 es una suma sobre frecuencias; falta saber si se promedia o suma sobre el batch
   y sobre las cuencas.
 - **Escala de los datos:** si se aplica sobre caudal normalizado o en unidades originales.
+
+**Resuelto en D-008:** solo el horizonte, `fft` completa con $N = 48$ y sin normalizar (Eq. 15 literal),
+suma sobre frecuencias y media sobre el batch, en caudal normalizado por cuenca.
 
 ---
 
@@ -583,15 +586,16 @@ modelo.
 
 Además de los huecos de cada aporte (§4.4, §5 y §6), el paper no detalla:
 
-- **Qué posiciones de la salida se usan como predicción:** lo natural son las 7 últimas posiciones del
-  decoder, proyectadas a 1 dimensión. **Decidido en D-011:** las 48 últimas posiciones del decoder.
+- **Qué posiciones de la salida se usan como predicción.** **Decidido en D-011:** las 48 últimas
+  posiciones del decoder (las 7 del paper), proyectadas a 1 dimensión.
 - **Datos de pre-entrenamiento y de fine-tuning:** no dice si se pre-entrena con todas las cuencas y se
   ajusta por cuenca o por región. **Decidido en D-004:** un modelo global sin fine-tuning.
 - **Métricas con horizonte de 7 días:** no aclara si se evalúa cada día de anticipación por separado, solo
   el primero o el promedio del horizonte. Tampoco cómo trata métricas indefinidas (varianza o caudal
   observado ≈ 0). **Decidido en D-003.**
 - **Normalización de los datos** (por cuenca, global, log-transform del caudal, etc.) ni **manejo de
-  valores faltantes**.
+  valores faltantes**. **Decidido en D-007:** z-score global por canal para la meteorología y por
+  cuenca para el caudal; el dataset no tiene faltantes y se valida al cargar.
 - **Tipo de positional encoding** (sinusoidal o aprendido). La Fig. 3 lo dibuja con un ícono de onda
   senoidal. **Decidido en D-012:** sinusoidal fijo de Vaswani, sumado sin escalar y compartido entre
   encoder y decoder.

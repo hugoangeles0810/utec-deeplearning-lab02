@@ -20,7 +20,7 @@ cada ambigüedad está en [`paper.md`](paper.md).
 | [D-001](#d-001--diferenciabilidad-de-la-máscara-lag-aware-eq-5) | P0 | Diferenciabilidad de la máscara lag-aware τ | — | **DECIDIDA** |
 | [D-003](#d-003--evaluación-del-horizonte-de-predicción) | P0 | Evaluación del horizonte de predicción | — | **DECIDIDA** |
 | [D-004](#d-004--estrategia-de-pre-entrenamiento-y-fine-tuning) | P0 | Pre-entrenamiento y fine-tuning | D-002 | **DECIDIDA** |
-| [D-013](#d-013--meteorología-futura-en-test) | P0 | Meteorología futura en test | D-006 | PENDIENTE (en espera del profesor; la grilla se lanza sobre val provisional) |
+| [D-013](#d-013--meteorología-futura-en-test) | P0 | Meteorología futura en test | D-006 | PENDIENTE (en espera del profesor; la grilla ya se corrió y se reporta sobre val) |
 | [D-018](#d-018--grilla-de-experimentos-sin-modelos-repetidos) | P0 | Grilla de experimentos sin modelos repetidos | D-004, D-017 | **DECIDIDA** |
 | [D-005](#d-005--causalidad-del-msfm) | P1 | Causalidad del MSFM | — | **DECIDIDA** |
 | [D-006](#d-006--covariables-conocidas-en-el-horizonte) | P1 | Covariables conocidas en el horizonte | D-002 | **DECIDIDA** (test en D-013) |
@@ -75,12 +75,9 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   - `split` en `train.h5`: 0 = train (254 000 muestras), 1 = validación (18 142). Test: 27 983 muestras.
   - `basin_id` anónimo y consistente entre splits.
   - `y_aux` (meteorología de las 48 h futuras) está marcada como
-    `future_supervision_only_not_inference_inputs`: **no puede ser entrada del modelo**.
+    `future_supervision_only_not_inference_inputs` (el equipo decidió usarla igual como entrada del
+    encoder en train y val, D-006).
   - Sin normalización ni imputación aplicadas.
-- Preguntas abiertas (las decide el equipo):
-  - cómo adaptar la ventana 96→7 diaria del paper y las escalas 7/30 del MSFM a 336→48 horario;
-  - si el split train/validación que viene dado es cronológico, y si se usa tal cual;
-  - el rol de `y_aux` (ver D-006) y la normalización por `basin_id` con posibles NaNs (ver D-007).
 - Hallazgos del análisis (2026-09-27):
   - val y test no comparten horas con train ni entre sí; no se puede verificar que sean posteriores a
     train (no hay fechas), solo que son disjuntos;
@@ -156,11 +153,6 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Paper: Sec. 3.2 y Eq. 16–20. Las métricas se definen sobre una serie, pero el modelo predice 7 días por
   ventana y el paper no dice cómo se agregan. Tampoco dice nada sobre métricas indefinidas o cuencas
   excluidas: solo que NSE y KGE van de −∞ a 1. Los resultados son mediana y media sobre las 241 cuencas.
-- Pregunta abierta: ¿se evalúa cada día de anticipación por separado (lead 1…7), solo el primer día, o el
-  promedio del horizonte?
-- Propuesta (2026-09-27): el horizonte es de 48 h y las ventanas de test no se
-  solapan. Métrica principal por cuenca sobre todos los pares (ventana, hora de anticipación), con
-  mediana y media sobre las 508 cuencas; como secundaria, NSE y RMSE por hora de anticipación (1…48).
 - Decisión:
   - **Métrica principal (pooled):** por cuenca, las 5 métricas (NSE, KGE, RMSE, TPE-2 %, BIAS) se calculan
     sobre todos los pares (ventana, hora de anticipación 1…48) juntos, en unidades originales (mm/h).
@@ -224,8 +216,6 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Prioridad: P0
 - Paper: Sec. 3.2 y Tabla 3 (200 epochs de pre-entrenamiento + 50 de fine-tuning; modelos por región y
   conjunto; early stopping de 20 epochs sin mejora en validación).
-- Pregunta abierta: ¿con qué datos se hace cada fase (todas las series → cada serie o región)? ¿Se omite el
-  fine-tuning si el dataset tiene una sola serie?
 - Decisión:
   - **un modelo global** entrenado con las 508 cuencas, **sin fine-tuning** (ni por cuenca ni por grupo);
   - tope de **200 epochs** (`train.max_epochs`), con **early stopping de paciencia 20** sobre la pérdida
@@ -233,8 +223,9 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
     guarda el mejor checkpoint;
   - un epoch recorre las 254 000 ventanas de train tal como vienen (D-014);
   - el **mismo presupuesto** (tope, paciencia, batch, seed) para CLAMF, las ablaciones y el baseline;
-  - infraestructura: la grilla final se entrena en **RunPod, Community Cloud, 1 × RTX 4090**
-    (~$0.34/h); la MacBook (M5 Pro, MPS) queda para desarrollo, tests y corridas cortas.
+  - infraestructura: la grilla final se entrena en **RunPod, 1 × RTX 4090** (Community Cloud,
+    ~$0.34/h, previsto; se usó Secure Cloud, ver "Medición en RunPod"); la MacBook (M5 Pro, MPS)
+    queda para desarrollo, tests y corridas cortas.
 - Mediciones (2026-09-28): proxy con los tamaños del paper (`d_model = 64`, 4 + 4 capas, 4 heads,
   `d_ff = 256`, ~600 k parámetros), 384 pasos, MSFM `k = 1, 24, 96`, máscara lag-aware suave y
   FreqMAE. No es el modelo real; el tiempo final puede variar ±50 %.
@@ -273,8 +264,8 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
      Medición (2026-09-29, agente, MacBook M5 Pro con MPS y datos reales): la precarga tarda ~5 s y
      ocupa 4.7 GB (train y val; test aún no tiene `y_aux`); entrega ~2 400 batches/s frente a ~410 del `DataLoader`
      (`num_workers: 0`, cache en memoria del sistema operativo), es decir 0.4 s frente a 2.4 s por
-     epoch. Ante los ~54 s por epoch esperados en el 4090, la ganancia en la Mac es de ~4 %; en
-     RunPod (CPU y disco desconocidos) está por medir en la primera corrida.
+     epoch. Ante los ~54 s por epoch esperados en el 4090, la ganancia en la Mac es de ~4 %. En
+     RunPod la precarga no se midió aparte (ver "Medición en RunPod").
   4. **Batch de 256** (`data.batch_size`, ya en `base.yaml`). Con fp32 y batch 512 no cabe en 24 GB.
   5. **Checkpoints reanudables.** Guardar modelo, optimizador, epoch, mejor pérdida de val, contador
      de paciencia y estado del RNG al final de cada epoch, y poder reanudar desde ahí (el pod se puede
@@ -324,16 +315,13 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 
     Relanzarlo tras una caída del pod retoma lo que falte. Da error si hay dos runs con el mismo
     nombre (D-018).
-  - `scripts/runpod/` tiene tres scripts:
-    - `setup.sh`: prepara el pod (uv, `uv sync --frozen`, chequeo de CUDA, datos, cache, tests);
-    - `run_grid.sh`: corre `clamf.grid`, deja un snapshot del store de MLflow y detiene el pod;
-    - `pull.sh`: en la Mac, trae el store, `mlruns/`, checkpoints y logs a `results/runpod/`.
+  - `scripts/runpod/` (`setup.sh`, `run_grid.sh`, `pull.sh`) prepara el pod, corre la grilla y trae
+    los resultados a `results/runpod/` en la Mac; qué hace cada uno está en [`runpod.md`](runpod.md).
   - MLflow guarda rutas absolutas de artifacts. `src/clamf/utils/mlflow_store.py` hace una copia
     consistente del sqlite (`snapshot`, con el backup online de SQLite) y reescribe el prefijo de
     `/workspace/...` a la ruta de la Mac (`relocate`). Así `clamf.evaluate` puede evaluar test en la
     Mac bajando `best.pt` de los artifacts.
-  - `torch 2.14` del lockfile trae wheels de CUDA 13.0, así que el pod necesita un driver NVIDIA ≥ 580
-    (filtro CUDA 13.0 al crearlo).
+  - `torch 2.14` del lockfile trae wheels de CUDA 13.0, así que el pod necesita un driver NVIDIA ≥ 580.
 - Medición en RunPod (2026-09-30, agente; grilla completa, commit `c0ecaa9`):
   - pod: 1 × RTX 4090 en **Secure Cloud** (US-NC-1, $0.74/h, driver 595, CUDA 13.2). Community no
     tenía 4090 con CUDA ≥ 13 al crearlo; el equipo eligió Secure en vez de esperar.
@@ -383,27 +371,22 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
     con y sin ella (recomendada si no llega `y_aux` de test);
   - c. evaluar el modelo con `y_aux` en val y sacar una validación nueva de tramos de train;
   - d. no usar `y_aux` como entrada.
-- Plan del equipo (2026-09-27): **opción a**. Se pide al profesor el `y_aux` de test y las predicciones
-  en test quedan **en espera** hasta recibirlo. Mientras tanto:
+- Plan del equipo: **opción a**. Se pide al profesor el `y_aux` de test y las predicciones en test
+  quedan **en espera** hasta recibirlo; **no hay fecha límite** (2026-09-27). Mientras tanto:
   - el desarrollo sigue con train/val, sin mirar `test_targets.csv`;
-  - early stopping y selección de modelo se hacen con **val** (`split == 1`), pero val no se reporta
-    como resultado final (equipo, 2026-09-28; reemplaza la idea de separar tramos de train, que
-    chocaba con D-014);
-  - actualización (equipo, 2026-09-28): mientras no llegue test, las tablas se reportan sobre **val de
-    forma provisional** (D-003), sabiendo que salen optimistas por usar val en la selección de modelo;
+  - early stopping y selección de modelo se hacen con **val** (`split == 1`) (2026-09-28; reemplaza
+    la idea de separar tramos de train, que chocaba con D-014);
+  - las tablas se reportan sobre **val de forma provisional** (D-003), sabiendo que salen optimistas
+    por usar val en la selección de modelo (2026-09-28);
+  - la grilla se corrió en RunPod sin esperar la respuesta (2026-09-30, D-004). Si llega el `y_aux` de
+    test, se evalúa test sobre los mismos runs;
   - el pipeline acepta `y_aux` de test como opcional: si `test.h5` lo trae, `clamf.data.prepare` lo
     cachea y el split de test queda disponible; sin él, el Dataset de test lanza un error explícito.
-    La opción b **no se implementa** hasta que el profesor responda que no;
-  - actualización (equipo, 2026-09-30): **la grilla se lanza ya** en RunPod (D-004, `docs/runpod.md`)
-    y se reporta sobre val de forma provisional. Si el profesor entrega el `y_aux` de test, se evalúa
-    test sobre los mismos runs. Si responde que no (opción b), se re-entrena toda la grilla, y el
-    equipo acepta ese costo (~18 h de GPU como máximo). Esto reemplaza el plan anterior de hacer solo
-    corridas cortas de desarrollo hasta tener respuesta.
 - Si el profesor entrega el `y_aux` de test, antes de usarlo se verifica:
   - que tenga shape `(27983, 48, 11)` y esté alineado por `Id` con `test.h5`;
   - que continúe a `X` sin salto, como pasa con `y_aux` en train/val.
-- Alternativa: si el profesor dice que no, se pasa a la **opción b**. **No hay fecha límite**: se
-  espera su respuesta (equipo, 2026-09-27).
+- Si el profesor dice que no, se pasa a la **opción b** (no se implementa antes) y se re-entrena toda
+  la grilla; el equipo acepta ese costo (2026-09-30).
 - Registrada: 2026-09-27.
 
 ## D-018 · Grilla de experimentos sin modelos repetidos
@@ -421,12 +404,11 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   - las tablas leen cada fila del run correspondiente: la Tabla 5 usa `vanilla`, `msfm`, `claam` y
     `clamf`; la Tabla 6, `vanilla`, `cam`, `laam` y `claam`; la comparación principal, `clamf` y
     `vanilla`;
-  - los 6 runs van a **un solo experimento de MLflow, `clamf-grid`** (reemplaza la regla de un
-    experimento por estudio de AGENTS.md §6); cada run se llama como su YAML con el campo nuevo
-    `logging.run_name`, y queda un solo run por nombre;
+  - los 6 runs van a **un solo experimento de MLflow, `clamf-grid`**; cada run se llama como su YAML
+    con el campo `logging.run_name`, y queda un solo run por nombre;
   - no se entrenan "MSFM + CAM" ni "MSFM + LAAM", que el paper no evalúa;
-  - `dev.yaml` (modelo completo, 2 epochs, experimento `dev`) queda fuera de la grilla, para corridas
-    de desarrollo;
+  - `dev.yaml` (modelo completo, experimento `dev`) queda fuera de la grilla, para corridas cortas de
+    desarrollo (detalle en `experiments.md`);
   - `tests/test_experiments.py` comprueba que cada YAML carga, que su `run_name` es el nombre del
     archivo, que la grilla tiene exactamente estas 6 combinaciones sin repetir y que solo cambian los
     flags y `logging` respecto de `base.yaml`.
@@ -436,8 +418,8 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
     pasa al paper;
   - ahorra 3 corridas (~9 h y ~$3 en el 4090 como máximo, D-004);
   - un nombre por modelo evita tener que decidir cuál de dos runs "iguales" va en cada tabla.
-- Alternativas consideradas: 9 YAML con un experimento de MLflow por estudio (la regla anterior de
-  AGENTS.md §6), que repite 3 entrenamientos; 6 runs con los nombres del paper y alias (más confuso
+- Alternativas consideradas: 9 YAML con un experimento de MLflow por estudio (la regla que tenía
+  antes AGENTS.md §6), que repite 3 entrenamientos; 6 runs con los nombres del paper y alias (más confuso
   porque un run tendría dos nombres).
 - Fecha / autor: 2026-09-30 / equipo.
 - Depende de: D-004, D-017.
@@ -454,7 +436,7 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   máscara. La Fig. 5 dibuja `F_weekly` y `F_monthly` más cortas que `F_daily` (MaxPool sin solapamiento,
   stride = k) y una "Multi-Head Attention" de fusión sin máscara. La causalidad (Sec. 2.2.2) solo se
   impone en las atenciones del CLAAM, no en el MSFM.
-- Pregunta abierta: un Conv1D con padding simétrico, un MaxPool de ventana 7/30 o una cross-attention de
+- Problema: un Conv1D con padding simétrico, un MaxPool de ventana 7/30 o una cross-attention de
   fusión sin máscara dejan que el día `i` vea días futuros, lo que contradice la causalidad del CLAAM.
 - Decisión: **MSFM literal, no causal (opción C)**:
   - Conv1D con padding simétrico (`same`);
@@ -520,12 +502,8 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Estado: **DECIDIDA**
 - Prioridad: P1
 - Paper: no especifica normalización ni tratamiento de faltantes.
-- Pregunta abierta: normalización por serie o global, si se aplica log-transform al target y cómo se
-  tratan los valores faltantes o centinelas (p. ej. `-999`). En cualquier caso, las estadísticas se ajustan
-  solo con train (`AGENTS.md` §7).
-- Nota (2026-09-26): los datos vienen sin normalizar ni imputar; hay que revisar NaNs en el EDA.
-  `basin_id` permite normalizar por cuenca.
-- Nota (2026-09-27): el EDA no encontró NaN, infinitos ni centinelas en ningún split.
+- Datos: vienen sin normalizar ni imputar, y el EDA (2026-09-27) no encontró NaN, infinitos ni
+  centinelas en ningún split. `basin_id` permite normalizar por cuenca.
 - Decisión (detalle en [`data_preparation.md`](data_preparation.md) §4):
   - estadísticas ajustadas solo con train (`split == 0`);
   - meteorología: z-score global por canal;
@@ -676,8 +654,8 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
     de atención que el resto del modelo (SDPA fusionada y pesos opcionales, D-004);
   - **sin positional encoding dentro del MSFM**: se suma después, como en la Fig. 3;
   - **Linear final** `3·d_fusion → d_model`;
-  - **sin MSFM** (`use_msfm: false`, en CLAMF-1, CLAMF-3, todas las CLAAM-* y el baseline vanilla): cada
-    entrada pasa por un `Linear(d → d_model)`, el embedding estándar del Transformer.
+  - **sin MSFM** (`use_msfm: false`: runs `vanilla`, `cam`, `laam` y `claam`, D-018): cada entrada
+    pasa por un `Linear(d → d_model)`, el embedding estándar del Transformer.
 - Justificación:
   - el kernel 3 es el tamaño habitual del embedding convolucional en Transformers para series de tiempo y
     mezcla pasos vecinos; `kernel = 1` sería un Linear sin mezcla temporal. El padding de ceros es el
@@ -713,7 +691,6 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
 - Estado: **DECIDIDA**
 - Prioridad: P2
 - Paper: Sec. 2.2.1 y 3.2. La salida es de 7 días, pero no dice qué posiciones del decoder se usan.
-- Pregunta abierta: lo natural son las 7 últimas posiciones del decoder, proyectadas a 1 dimensión.
 - Decisión: las **48 últimas posiciones** del decoder (las del horizonte, que entran en ceros),
   proyectadas a 1 dimensión con una capa lineal (decidido en D-002).
 - Implementación (2026-09-29, agente): `src/clamf/models/clamf_former.py` (`CLAMFFormer` y
@@ -744,8 +721,9 @@ Otros pendientes (no técnicos): registrar la **fecha de entrega** de la present
   - `prepare` también comprueba, con un hash de cada fila horaria, que val y test no compartan
     horas con train (0 compartidas con los datos reales).
 - Justificación: normalizar una vez evita repetir el trabajo en cada run, y el memmap mantiene baja
-  la RAM en el Mac y en la máquina NVIDIA. Con 0 workers el DataLoader entrega ~320 batches/s de 256
-  ventanas en el Mac, así que la carga no es el cuello de botella.
+  la RAM cuando se lee con el `DataLoader`. En el Mac, con 0 workers, el `DataLoader` no es el cuello
+  de botella; en el 4090 sí lo sería, y por eso por defecto el cache se precarga en el dispositivo
+  (D-004, punto 3).
 - Alternativas consideradas: cargar todo en RAM (~6 GB por proceso); leer el `.h5` por muestra
   (lento con acceso aleatorio); guardar el cache sin normalizar y normalizar en `__getitem__`.
 - Fecha / autor: 2026-09-28 / agente.

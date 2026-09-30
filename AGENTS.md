@@ -74,6 +74,7 @@ atención** (opcionalmente) para visualizarlos como en las Figs. 2 y 9.
 └── docs/
     ├── paper.pdf
     ├── paper.md                   # resumen técnico del paper
+    ├── data_preparation.md        # entradas del modelo, splits, normalización y cache de datos
     ├── experiments.md             # grilla de experimentos y mapeo a las tablas del paper
     ├── runpod.md                  # cómo correr la grilla en RunPod y bajar los resultados
     └── decisions.md               # registro de decisiones de implementación
@@ -112,8 +113,9 @@ La grilla se corre en RunPod con `scripts/runpod/{setup,run_grid}.sh` y se baja 
 - Selección de dispositivo centralizada en `clamf/utils/device.py`: `cuda` → `mps` → `cpu`,
   sobreescribible por config/CLI (`device: auto|cuda|mps|cpu`).
 - MPS no soporta `float64`: usa `float32` en todo el pipeline de tensores.
-- Si alguna operación (p. ej. FFT compleja) no está soportada en MPS, usar `PYTORCH_ENABLE_MPS_FALLBACK=1`
-  y documentarlo; no escribir ramas de código específicas por dispositivo salvo que sea imprescindible.
+- Si alguna operación no está soportada en MPS, usar `PYTORCH_ENABLE_MPS_FALLBACK=1` y documentarlo
+  (hoy no hace falta: la FFT corre nativa, D-008); no escribir ramas de código específicas por
+  dispositivo salvo que sea imprescindible.
 - Los tests deben correr en CPU y ser rápidos (modelos diminutos, pocos pasos).
 
 ### Rendimiento del entrenamiento — obligatorio (D-004)
@@ -167,23 +169,21 @@ alternativas).
 **P2 y P3** al implementar, documentando la decisión. Los **P0 y P1** los decide el equipo: los agentes
 pueden proponer opciones, pero no implementar una solución definitiva sin confirmación.
 
-- **Causalidad del MSFM — decidida en D-005:** el MSFM se implementa **literal y no causal** (Conv1D
-  con padding simétrico, MaxPool con stride = k, fusión sin máscara). Con `use_msfm: true` la posición
+Dos decisiones que condicionan casi todo el modelo:
+- **Máscara lag-aware (Eq. 5), D-001:** máscara **suave diferenciable** (sesgo
+  `logsigmoid((i + τ_i + 0.5 − j) / T)` sobre los logits de la cross-attention), la misma en
+  entrenamiento y evaluación; la binaria es solo para visualización.
+- **Causalidad del MSFM, D-005:** el MSFM es **literal y no causal**. Con `use_msfm: true` la posición
   `i` ve información de `t > i` dentro de la entrada; el target no se filtra porque el horizonte va en ceros.
-
-**Máscara lag-aware (Eq. 5) — decidida en D-001:** se implementa como **máscara suave diferenciable**
-(sesgo `logsigmoid((i + τ_i + 0.5 − j) / T)` sobre los logits de la cross-attention), con temperatura
-`T` configurable, `τ` inicializado cerca de 0 y su distribución registrada en MLflow. Entrenamiento y
-evaluación usan la misma máscara suave; la binaria es solo para visualización. Detalles en
-`docs/decisions.md`.
 
 ### Datos y fugas de información
 - Split **cronológico** train/val/test; nunca aleatorio. Sin solapamiento temporal entre splits para la variable objetivo.
 - Normalización con estadísticas **solo del train** (por serie/cuenca si hay varias); guardar los scalers
   como artifact. Las métricas se calculan en **unidades originales** (des-normalizar antes).
-- Los 7 días futuros de la entrada del decoder van **rellenos con ceros**; el target nunca puede entrar al modelo.
-- Documentar qué covariables se asumen conocidas en el horizonte de predicción (el paper usa la meteorología
-  de los 7 días futuros como entrada del encoder).
+- Las 48 h del horizonte en la entrada del decoder van **rellenas con ceros** (los 7 días del paper);
+  el target nunca puede entrar al modelo.
+- Covariables conocidas en el horizonte: la meteorología de las 48 h futuras (`y_aux`) entra al
+  encoder, como en el paper (D-006; en test, pendiente de D-013).
 - Manejo explícito de valores faltantes (p. ej. centinelas tipo `-999`): nunca dejar que entren como números.
 
 ### Reproducibilidad
@@ -202,7 +202,7 @@ Obligatorios para las piezas críticas (`tests/`):
 - **Causalidad**: perturbar la entrada en `t > i` no cambia la salida del encoder/decoder en posiciones `≤ i`
   cuando CAM está activo (y sí puede cambiarla en el baseline vanilla). Con `use_msfm: false`, o sobre
   los bloques posteriores al MSFM, ya que el MSFM no es causal (D-005).
-- **Sin fuga del target**: cambiar los valores reales de los 7 días futuros no altera la predicción.
+- **Sin fuga del target**: cambiar los valores reales del horizonte (48 h) no altera la predicción.
 - **FreqMAE**: 0 para predicción perfecta, no negativa, gradiente finito; comparar con un cálculo manual pequeño.
 - **Métricas**: NSE = 1 y BIAS = 0 para predicción perfecta; NSE = 0 al predecir la media; casos simples
   calculados a mano para KGE, RMSE y TPE-2 %.

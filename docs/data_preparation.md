@@ -27,13 +27,12 @@ Los datos vienen **limpios**: no hay NaN, infinitos ni centinelas en ningún spl
 | `target` | `(B, 48)` | `y`; solo se usa en la pérdida |
 | `basin_id` | `(B,)` | Para normalizar y des-normalizar el caudal |
 
-- El encoder recibe `y_aux`, como en el paper (D-006, decisión del equipo). Es la única excepción a
-  `metadata.json`.
-- Covariables conocidas en el horizonte: los 11 canales meteorológicos. El caudal del horizonte no se
-  conoce (ceros). `basin_id` no es entrada del modelo y no hay atributos estáticos ni variables de
-  calendario (D-006). Todos los modelos reciben las mismas entradas.
-- `y` **nunca** entra al modelo.
-- La predicción son las 48 últimas posiciones del decoder.
+- El encoder recibe `y_aux`, como en el paper, aunque `metadata.json` la marca como solo supervisión
+  (D-006). Covariables conocidas en el horizonte: los 11 canales meteorológicos; el caudal del
+  horizonte no se conoce (ceros).
+- `y` **nunca** entra al modelo; `basin_id` tampoco (no hay atributos estáticos ni variables de
+  calendario). Todos los modelos reciben las mismas entradas.
+- La predicción son las 48 últimas posiciones del decoder (D-011).
 
 ## 3. Splits
 
@@ -42,13 +41,9 @@ Los datos vienen **limpios**: no hay NaN, infinitos ni centinelas en ningún spl
 - Las ventanas de train se usan tal cual, sin re-muestrear (D-014). Todas las de una cuenca empiezan
   a la misma hora del día, mientras que las de val/test empiezan a cualquier hora; se acepta ese
   desfase.
-- **Test está en espera** (D-013): falta el `y_aux` de test y se le pidió al profesor. No hay fecha
-  límite: se espera su respuesta. Mientras tanto:
-  - no se mira `test_targets.csv`;
-  - early stopping y selección de modelo se hacen con val, pero val no se reporta como resultado
-    final;
-  - las ablaciones y el baseline no se lanzan hasta tener respuesta;
-  - si el profesor dice que no, se pasa a entrenar con dropout de la meteorología futura (opción b).
+- **Test está en espera** (D-013): falta el `y_aux` de test y se le pidió al profesor. Mientras tanto
+  no se mira `test_targets.csv`, early stopping y selección de modelo se hacen con val, y las tablas se
+  reportan sobre val de forma provisional (D-003).
 
 ## 4. Normalización (D-007)
 
